@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Confirmed — LarpBase</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',-apple-system,sans-serif;background:#0a0a12;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:24px;padding:40px;max-width:480px;width:100%;text-align:center}
+    .icon{font-size:3rem;margin-bottom:16px}
+    h1{font-size:1.5rem;margin-bottom:8px}
+    .sub{color:rgba(255,255,255,0.6);margin-bottom:24px}
+    .key-box{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px}
+    .key-label{font-size:.8rem;color:rgba(255,255,255,0.4);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+    .key{font-size:1.4rem;font-weight:700;letter-spacing:3px;font-family:monospace;word-break:break-all}
+    .note{font-size:.85rem;color:rgba(255,255,255,0.4);margin-bottom:24px}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;font-weight:600;font-size:.9rem;text-decoration:none;background:linear-gradient(135deg,#8B5CF6,#6366F1);color:#fff;transition:opacity .2s}
+    .btn:hover{opacity:.9}
+    .email-note{font-size:.8rem;color:rgba(255,255,255,0.3);margin-top:16px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>Payment Confirmed!</h1>
+    <p class="sub">Your license key is ready.</p>
+    <div class="key-box">
+      <div class="key-label">Your License Key</div>
+      <div class="key"><%= key %></div>
+    </div>
+    <a href="/activation.html" class="btn">Activate Now →</a>
+    <% if (email) { %>
+      <p class="email-note">A copy has also been sent to <%= email %></p>
+    <% } %>
+  </div>
+</body>
+</html>

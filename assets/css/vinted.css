@@ -1,0 +1,9 @@
+.vinted-theme{
+  --accent:#0D9A9E;
+  --accent-bright:#14B0B4;
+  --accent-gradient:linear-gradient(135deg,#0D9A9E,#14B0B4);
+  --accent-soft:rgba(13,154,158,0.12);
+  --accent-glow:rgba(13,154,158,0.2)
+}
+.vinted-theme .orb-1{background:linear-gradient(180deg,#0D9A9E,#06B6D4)}
+.vinted-theme .orb-3{background:linear-gradient(180deg,#0D9A9E,#34D399)}

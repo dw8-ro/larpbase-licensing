@@ -1,0 +1,9 @@
+.phantom-theme{
+  --accent:#8B5CF6;
+  --accent-bright:#A78BFA;
+  --accent-gradient:linear-gradient(135deg,#8B5CF6,#6366F1);
+  --accent-soft:rgba(139,92,246,0.12);
+  --accent-glow:rgba(139,92,246,0.2)
+}
+.phantom-theme .orb-1{background:linear-gradient(180deg,#7C3AED,#3B82F6)}
+.phantom-theme .orb-3{background:linear-gradient(180deg,#8B5CF6,#EC4899)}
