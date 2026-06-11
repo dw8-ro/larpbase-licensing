@@ -223,6 +223,16 @@ app.get('/dev/test-payment/:product', async (req, res) => {
   }
 });
 
+app.get('/dev/recent-keys', async (req, res) => {
+  try {
+    const main = await query('SELECT key_raw, paypal_txn, customer_email, created_at FROM licenses ORDER BY created_at DESC LIMIT 5');
+    const vinted = await vintedQuery('SELECT key, paypal_txn, created_at FROM license_keys ORDER BY created_at DESC LIMIT 5');
+    res.json({ main: main.rows, vinted: vinted.rows });
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 app.post('/api/paypal-webhook', async (req, res) => {
   try {
     const event = req.body;
