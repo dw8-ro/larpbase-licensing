@@ -118,7 +118,7 @@ app.use(express.static(path.join(__dirname, '.'), {
 
 app.get('/thank-you', async (req, res) => {
   try {
-    const { token, PayerID, order_id, paymentId } = req.query;
+    const { token, PayerID, order_id, paymentId, email: queryEmail, product: queryProduct } = req.query;
     const orderId = token || order_id || paymentId;
 
     console.log('Thank-you query:', JSON.stringify(req.query));
@@ -126,20 +126,37 @@ app.get('/thank-you', async (req, res) => {
     if (!orderId) {
       return res.render('thank-you', {
         keys: [],
-        product: 'unknown',
-        email: req.query.email || null,
+        product: queryProduct || 'unknown',
+        email: queryEmail || null,
         noToken: true,
       });
     }
 
-    const order = await verifyPayPalOrder(orderId);
+    let payerEmail = queryEmail;
+    let amount = 0;
+    let txnId = orderId;
 
-    const payerEmail = order.payer?.email_address;
-    const purchaseUnit = order.purchase_units?.[0];
-    const amount = parseFloat(purchaseUnit?.amount?.value || '0');
-    const txnId = purchaseUnit?.payments?.captures?.[0]?.id ||
-                  purchaseUnit?.payments?.authorizations?.[0]?.id ||
-                  orderId;
+    if (queryEmail && queryProduct) {
+      // Custom flow — capture the order
+      const accessToken = await getPayPalAccessToken();
+      const { data } = await axios.post(
+        `${PAYPAL_API}/v2/checkout/orders/${orderId}/capture`,
+        {},
+        { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+      );
+      const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+      txnId = capture?.id || orderId;
+      amount = parseFloat(capture?.amount?.value || '0');
+    } else {
+      // NCP button flow — verify the order
+      const order = await verifyPayPalOrder(orderId);
+      payerEmail = order.payer?.email_address;
+      const purchaseUnit = order.purchase_units?.[0];
+      amount = parseFloat(purchaseUnit?.amount?.value || '0');
+      txnId = purchaseUnit?.payments?.captures?.[0]?.id ||
+              purchaseUnit?.payments?.authorizations?.[0]?.id ||
+              orderId;
+    }
 
     const result = await processPayment(txnId, amount, payerEmail);
 
@@ -230,6 +247,54 @@ app.get('/dev/recent-keys', async (req, res) => {
     res.json({ main: main.rows, vinted: vinted.rows });
   } catch (err) {
     res.status(500).send(err.message);
+  }
+});
+
+app.post('/api/create-order', async (req, res) => {
+  try {
+    const { email, product } = req.body;
+    if (!email || !product) {
+      return res.status(400).json({ error: 'Email and product required' });
+    }
+
+    const PRICES = {
+      'phantom': { amount: '16.99', description: 'Larp Phantom - Single Key' },
+      'phantom-dual': { amount: '23.99', description: 'Larp Phantom - Dual Pack' },
+      'vinted': { amount: '7.99', description: 'Larp Vinted' },
+      'bundle': { amount: '22.99', description: 'Larp Phantom + Vinted Bundle' },
+    };
+
+    const info = PRICES[product];
+    if (!info) return res.status(400).json({ error: 'Invalid product' });
+
+    const paypalToken = await getPayPalAccessToken();
+    const { data } = await axios.post(
+      `${PAYPAL_API}/v2/checkout/orders`,
+      {
+        intent: 'CAPTURE',
+        purchase_units: [{
+          amount: { currency_code: 'GBP', value: info.amount },
+          description: info.description,
+        }],
+        payment_source: {
+          paypal: {
+            experience_context: {
+              return_url: `https://larpbase.store/thank-you?email=${encodeURIComponent(email)}&product=${product}`,
+              cancel_url: `https://larpbase.store/${product === 'vinted' ? 'vinted' : 'phantom'}.html`,
+            },
+          },
+        },
+      },
+      { headers: { Authorization: `Bearer ${paypalToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    const approvalUrl = data.links.find(l => l.rel === 'payer-action')?.href;
+    if (!approvalUrl) return res.status(500).json({ error: 'No approval URL' });
+
+    res.json({ url: approvalUrl, orderId: data.id });
+  } catch (err) {
+    console.error('Create order error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to create order' });
   }
 });
 
