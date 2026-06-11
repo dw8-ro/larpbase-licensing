@@ -23,9 +23,18 @@
 </head>
 <body>
   <div class="card">
-    <div class="icon">✅</div>
-    <h1>Payment Confirmed!</h1>
-    <p class="sub"><% if (product === 'bundle') { %>Your license keys are ready.<% } else { %>Your license key is ready.<% } %></p>
+    <div class="icon"><% if (noToken) { %>⏳<% } else { %>✅<% } %></div>
+    <h1><% if (noToken) { %>Payment Received!<% } else { %>Payment Confirmed!<% } %></h1>
+    <p class="sub">
+      <% if (noToken) { %>
+        Your license key is being sent to your email — it should arrive within a few minutes.
+      <% } else if (product === 'bundle') { %>
+        Your license keys are ready.
+      <% } else { %>
+        Your license key is ready.
+      <% } %>
+    </p>
+    <% if (!noToken) { %>
     <div class="key-box">
       <% if (product === 'bundle') { %>
         <div class="key-label">Larp Phantom Key</div>
@@ -40,6 +49,9 @@
     <a href="/activation.html" class="btn">Activate Now →</a>
     <% if (email) { %>
       <p class="email-note">A copy has also been sent to <%= email %></p>
+    <% } %>
+    <% } else { %>
+    <a href="/activation.html" class="btn">Go to Activation →</a>
     <% } %>
   </div>
 </body>

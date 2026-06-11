@@ -43,6 +43,71 @@ async function verifyPayPalOrder(orderId) {
   return data;
 }
 
+async function verifyWebhookSignature(req, event) {
+  try {
+    const token = await getPayPalAccessToken();
+    const { data } = await axios.post(
+      `${PAYPAL_API}/v1/notifications/verify-webhook-signature`,
+      {
+        auth_algo: req.headers['paypal-auth-algo'],
+        cert_url: req.headers['paypal-cert-url'],
+        transmission_id: req.headers['paypal-transmission-id'],
+        transmission_sig: req.headers['paypal-transmission-sig'],
+        transmission_time: req.headers['paypal-transmission-time'],
+        webhook_id: process.env.PAYPAL_WEBHOOK_ID,
+        webhook_event: event,
+      },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+    return data.verification_status === 'SUCCESS';
+  } catch (err) {
+    console.error('Webhook verification error:', err.message);
+    return false;
+  }
+}
+
+async function processPayment(txnId, amount, payerEmail) {
+  const product = PRODUCT_MAP[amount.toFixed(2)];
+  if (!product) return null;
+
+  if (product === 'vinted') {
+    const exist = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn=$1', [txnId]);
+    if (exist.rows.length > 0) return { keys: [exist.rows[0].key], product, email: payerEmail };
+  } else {
+    const exist = await query('SELECT key_raw FROM licenses WHERE paypal_txn=$1', [txnId]);
+    if (exist.rows.length > 0) {
+      const keys = exist.rows.map(r => r.key_raw);
+      return { keys: product === 'bundle' ? keys : [keys[0]], product, email: payerEmail };
+    }
+  }
+
+  let keys = [];
+  if (product === 'vinted') {
+    const k = generateKey(); const h = hashKey(k);
+    await vintedQuery('INSERT INTO license_keys (key_hash,key,status,single_device,paypal_txn) VALUES($1,$2,$3,$4,$5)', [h,k,'active',true,txnId]);
+    keys.push(k);
+  } else if (product === 'bundle') {
+    for (const sub of ['phantom','vinted']) {
+      const k = generateKey(); const h = hashKey(k);
+      if (sub === 'vinted') {
+        await vintedQuery('INSERT INTO license_keys (key_hash,key,status,single_device,paypal_txn) VALUES($1,$2,$3,$4,$5)', [h,k,'active',true,txnId]);
+      } else {
+        await query('INSERT INTO licenses (key_raw,key,plan,product,paypal_txn,customer_email,status) VALUES($1,$2,$3,$4,$5,$6,$7)', [k,h,'Active Plan','phantom',txnId,payerEmail||'','active']);
+      }
+      keys.push(k);
+    }
+  } else {
+    const k = generateKey(); const h = hashKey(k);
+    await query('INSERT INTO licenses (key_raw,key,plan,product,paypal_txn,customer_email,status) VALUES($1,$2,$3,$4,$5,$6,$7)', [k,h,'Active Plan',product,txnId,payerEmail||'','active']);
+    keys.push(k);
+  }
+
+  if (payerEmail && keys.length) {
+    await sendLicenseKey(payerEmail, keys, product).catch(e => console.error('Email failed:', e.message));
+  }
+  return { keys, product, email: payerEmail };
+}
+
 app.use(express.static(path.join(__dirname, '.'), {
   setHeaders: (res, filePath) => {
     if (filePath.endsWith('.html')) {
@@ -53,122 +118,40 @@ app.use(express.static(path.join(__dirname, '.'), {
 
 app.get('/thank-you', async (req, res) => {
   try {
-    const { token, PayerID } = req.query;
+    const { token, PayerID, order_id, paymentId } = req.query;
+    const orderId = token || order_id || paymentId;
 
-    if (!token) {
-      return res.status(400).send('Missing payment token');
+    console.log('Thank-you query:', JSON.stringify(req.query));
+
+    if (!orderId) {
+      return res.render('thank-you', {
+        keys: [],
+        product: 'unknown',
+        email: req.query.email || null,
+        noToken: true,
+      });
     }
 
-    const order = await verifyPayPalOrder(token);
+    const order = await verifyPayPalOrder(orderId);
 
     const payerEmail = order.payer?.email_address;
     const purchaseUnit = order.purchase_units?.[0];
     const amount = parseFloat(purchaseUnit?.amount?.value || '0');
     const txnId = purchaseUnit?.payments?.captures?.[0]?.id ||
                   purchaseUnit?.payments?.authorizations?.[0]?.id ||
-                  token;
+                  orderId;
 
-    const product = PRODUCT_MAP[amount.toFixed(2)];
-    if (!product) {
-      return res.status(400).send('Unknown product amount');
-    }
+    const result = await processPayment(txnId, amount, payerEmail);
 
-    const existing = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1', [txnId]);
-    if (existing.rows.length > 0) {
-      const keys = existing.rows.map(r => r.key_raw);
-      return res.render('thank-you', {
-        keys: product === 'bundle' ? keys : [keys[0]],
-        product,
-        email: payerEmail,
-      });
-    }
-
-    if (product === 'vinted') {
-      const existingVinted = await vintedQuery('SELECT key_hash FROM license_keys WHERE paypal_txn = $1', [txnId]);
-      if (existingVinted.rows.length > 0) {
-        const vintedKey = existingVinted.rows[0];
-        const rawResult = await vintedQuery('SELECT key FROM license_keys WHERE key_hash = $1', [vintedKey.key_hash]);
-        return res.render('thank-you', {
-          keys: [rawResult.rows[0]?.key],
-          product: 'vinted',
-          email: payerEmail,
-        });
-      }
-
-      const rawKey = generateKey();
-      const hashedKey = hashKey(rawKey);
-      await vintedQuery(
-        'INSERT INTO license_keys (key_hash, key, status, single_device, paypal_txn) VALUES ($1, $2, $3, $4, $5)',
-        [hashedKey, rawKey, 'active', true, txnId]
-      );
-
-      if (payerEmail) {
-        try {
-          await sendLicenseKey(payerEmail, [rawKey], 'vinted');
-        } catch (emailErr) {
-          console.error('Email send failed:', emailErr.message);
-        }
-      }
-
-      return res.render('thank-you', {
-        keys: [rawKey],
-        product: 'vinted',
-        email: payerEmail,
-      });
-    }
-
-    let keys = [];
-    if (product === 'bundle') {
-      const existingBundle = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [txnId]);
-      if (existingBundle.rows.length > 0) {
-        const phantomRow = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1 AND product = $2', [txnId, 'phantom']);
-        if (phantomRow.rows.length > 0) {
-          return res.render('thank-you', {
-            keys: [phantomRow.rows[0].key_raw, existingBundle.rows[0].key],
-            product: 'bundle',
-            email: payerEmail,
-          });
-        }
-      }
-
-      for (const subProduct of ['phantom', 'vinted']) {
-        const rawKey = generateKey();
-        const hashedKey = hashKey(rawKey);
-        if (subProduct === 'vinted') {
-          await vintedQuery(
-            'INSERT INTO license_keys (key_hash, key, status, single_device, paypal_txn) VALUES ($1, $2, $3, $4, $5)',
-            [hashedKey, rawKey, 'active', true, txnId]
-          );
-        } else {
-          await query(
-            'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-            [rawKey, hashedKey, 'Active Plan', 'phantom', txnId, payerEmail || '', 'active']
-          );
-        }
-        keys.push(rawKey);
-      }
-    } else {
-      const rawKey = generateKey();
-      const hashedKey = hashKey(rawKey);
-      await query(
-        'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [rawKey, hashedKey, 'Active Plan', product, txnId, payerEmail || '', 'active']
-      );
-      keys.push(rawKey);
-    }
-
-    if (payerEmail) {
-      try {
-        await sendLicenseKey(payerEmail, keys, product);
-      } catch (emailErr) {
-        console.error('Email send failed:', emailErr.message);
-      }
+    if (!result) {
+      return res.status(400).send('Unknown product');
     }
 
     res.render('thank-you', {
-      keys: product === 'bundle' ? keys : [keys[0]],
-      product,
-      email: payerEmail,
+      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      product: result.product,
+      email: result.email,
+      noToken: false,
     });
   } catch (err) {
     console.error('Thank-you error:', err);
@@ -237,6 +220,46 @@ app.get('/dev/test-payment/:product', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).send('Error');
+  }
+});
+
+app.post('/api/paypal-webhook', async (req, res) => {
+  try {
+    const event = req.body;
+    console.log('Webhook received:', event.event_type);
+
+    if (process.env.PAYPAL_WEBHOOK_ID) {
+      const verified = await verifyWebhookSignature(req, event);
+      if (!verified) {
+        console.error('Webhook verification failed');
+        return res.sendStatus(200);
+      }
+    }
+
+    if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
+      const capture = event.resource;
+      const txnId = capture.id;
+      const amount = parseFloat(capture.amount?.value || '0');
+      const payerEmail = capture.payer?.email_address;
+      if (txnId && amount > 0) {
+        await processPayment(txnId, amount, payerEmail);
+        console.log('Processed capture:', txnId);
+      }
+    } else if (event.event_type === 'CHECKOUT.ORDER.APPROVED') {
+      const order = event.resource;
+      const txnId = order.id;
+      const amount = parseFloat(order.purchase_units?.[0]?.amount?.value || '0');
+      const payerEmail = order.payer?.email_address;
+      if (txnId && amount > 0) {
+        await processPayment(txnId, amount, payerEmail);
+        console.log('Processed order:', txnId);
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('Webhook error:', err);
+    res.sendStatus(200);
   }
 });
 
