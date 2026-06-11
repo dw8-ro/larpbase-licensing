@@ -147,13 +147,19 @@ app.get('/thank-you', async (req, res) => {
     }
 
     // Check if already processed
-    const existingMain = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1', [orderId]);
+    const existingMain = await query('SELECT key_raw, product FROM licenses WHERE paypal_txn = $1', [orderId]);
     const existingVinted = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [orderId]);
     if (existingMain.rows.length > 0 || existingVinted.rows.length > 0) {
       const keys = [];
-      if (existingMain.rows.length > 0) keys.push(existingMain.rows[0].key_raw);
-      if (existingVinted.rows.length > 0) keys.push(existingVinted.rows[0].key);
-      const prod = existingVinted.rows.length > 0 && existingMain.rows.length === 0 ? 'vinted' : (keys.length > 1 ? 'bundle' : 'phantom');
+      let prod = 'unknown';
+      if (existingMain.rows.length > 0) {
+        keys.push(existingMain.rows[0].key_raw);
+        prod = existingMain.rows[0].product;
+      }
+      if (existingVinted.rows.length > 0) {
+        keys.push(existingVinted.rows[0].key);
+        prod = keys.length > 1 ? 'bundle' : 'vinted';
+      }
       return res.render('thank-you', { keys, product: prod, email: null, noToken: false });
     }
 
@@ -291,9 +297,15 @@ app.post('/api/claim-key', async (req, res) => {
     const existingVinted = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [txnId]);
     if (existingMain.rows.length > 0 || existingVinted.rows.length > 0) {
       const keys = [];
-      if (existingMain.rows.length > 0) keys.push(existingMain.rows[0].key_raw);
-      if (existingVinted.rows.length > 0) keys.push(existingVinted.rows[0].key);
-      const prod = existingVinted.rows.length > 0 && existingMain.rows.length === 0 ? 'vinted' : (keys.length > 1 ? 'bundle' : 'phantom');
+      let prod = 'unknown';
+      if (existingMain.rows.length > 0) {
+        keys.push(existingMain.rows[0].key_raw);
+        prod = existingMain.rows[0].product;
+      }
+      if (existingVinted.rows.length > 0) {
+        keys.push(existingVinted.rows[0].key);
+        prod = keys.length > 1 ? 'bundle' : 'vinted';
+      }
       return res.json({ success: true, keys, product: prod });
     }
 
