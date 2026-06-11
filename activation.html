@@ -72,6 +72,16 @@
               </div>
             </a>
           </div>
+          <details style="margin-top:24px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.06)">
+            <summary style="cursor:pointer;font-size:.85rem;color:var(--text-muted);text-align:center;font-weight:500">Didn't receive your key? Claim it here</summary>
+            <div style="margin-top:16px">
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Enter the PayPal transaction ID from your receipt and your email, and we'll send your key.</p>
+              <div id="claimStatus" style="display:none;padding:10px;border-radius:8px;margin-bottom:12px;font-size:.85rem"></div>
+              <input type="text" id="claimTxn" placeholder="PayPal Transaction ID" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:8px;box-sizing:border-box">
+              <input type="email" id="claimEmail" placeholder="Your email address" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:12px;box-sizing:border-box">
+              <button onclick="claimKey()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:.85rem;font-weight:600;cursor:pointer">Claim License Key</button>
+            </div>
+          </details>
           <div style="text-align:center;margin-top:32px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.06)">
             <p style="font-size:.85rem;color:var(--text-muted);margin-bottom:12px">Need help? Join our support chat</p>
             <a href="https://t.me/larpbase7/203" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);text-decoration:none;font-size:.9rem;font-weight:500;transition:all .2s"
@@ -104,5 +114,31 @@
   </footer>
 
   <script src="assets/js/main.js"></script>
+  <script>
+    async function claimKey() {
+      const txnId = document.getElementById('claimTxn').value.trim()
+      const email = document.getElementById('claimEmail').value.trim()
+      const status = document.getElementById('claimStatus')
+      if (!txnId || !email) { status.style.display = 'block'; status.style.background = 'rgba(239,68,68,0.15)'; status.textContent = 'Please fill in both fields'; return }
+      status.style.display = 'block'
+      status.style.background = 'rgba(255,255,255,0.05)'
+      status.textContent = 'Processing...'
+      try {
+        const res = await fetch('/api/claim-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txnId, email }) })
+        const data = await res.json()
+        if (data.success) {
+          const keys = Array.isArray(data.keys) ? data.keys.join(', ') : data.keys
+          status.style.background = 'rgba(34,197,94,0.15)'
+          status.innerHTML = `Key(s) found! Check <strong>${data.email}</strong> — we just sent them.`
+        } else {
+          status.style.background = 'rgba(239,68,68,0.15)'
+          status.textContent = data.error || 'Failed to claim key. Contact support on Telegram.'
+        }
+      } catch {
+        status.style.background = 'rgba(239,68,68,0.15)'
+        status.textContent = 'Server error. Try again or contact support on Telegram.'
+      }
+    }
+  </script>
 </body>
 </html>

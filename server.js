@@ -1,7 +1,6 @@
 const express = require('express');
 const path = require('path');
 const axios = require('axios');
-const { Client, Environment, OrdersController } = require('@paypal/paypal-server-sdk');
 const { query, vintedQuery, createTables } = require('./db');
 const { generateKey, hashKey } = require('./keygen');
 const { sendLicenseKey } = require('./email');
@@ -119,7 +118,7 @@ app.use(express.static(path.join(__dirname, '.'), {
 
 app.get('/thank-you', async (req, res) => {
   try {
-    const { token, PayerID, order_id, paymentId, email: queryEmail, product: queryProduct } = req.query;
+    const { token, PayerID, order_id, paymentId } = req.query;
     const orderId = token || order_id || paymentId;
 
     console.log('Thank-you query:', JSON.stringify(req.query));
@@ -127,40 +126,20 @@ app.get('/thank-you', async (req, res) => {
     if (!orderId) {
       return res.render('thank-you', {
         keys: [],
-        product: queryProduct || 'unknown',
-        email: queryEmail || null,
+        product: 'unknown',
+        email: req.query.email || null,
         noToken: true,
       });
     }
 
-    let payerEmail = queryEmail;
-    let amount = 0;
-    let txnId = orderId;
+    const order = await verifyPayPalOrder(orderId);
 
-    if (queryEmail && queryProduct) {
-      // Custom flow — capture the order
-      const paypalClient = new Client({
-        clientCredentialsAuthCredentials: {
-          oAuthClientId: process.env.PAYPAL_CLIENT_ID,
-          oAuthClientSecret: process.env.PAYPAL_CLIENT_SECRET,
-        },
-        environment: Environment.Live,
-      });
-      const ordersController = new OrdersController(paypalClient);
-      const { result } = await ordersController.captureOrder({ id: orderId });
-      const capture = result.purchaseUnits?.[0]?.payments?.captures?.[0];
-      txnId = capture?.id || orderId;
-      amount = parseFloat(capture?.amount?.value || '0');
-    } else {
-      // NCP button flow — verify the order
-      const order = await verifyPayPalOrder(orderId);
-      payerEmail = order.payer?.email_address;
-      const purchaseUnit = order.purchase_units?.[0];
-      amount = parseFloat(purchaseUnit?.amount?.value || '0');
-      txnId = purchaseUnit?.payments?.captures?.[0]?.id ||
-              purchaseUnit?.payments?.authorizations?.[0]?.id ||
-              orderId;
-    }
+    const payerEmail = order.payer?.email_address;
+    const purchaseUnit = order.purchase_units?.[0];
+    const amount = parseFloat(purchaseUnit?.amount?.value || '0');
+    const txnId = purchaseUnit?.payments?.captures?.[0]?.id ||
+                  purchaseUnit?.payments?.authorizations?.[0]?.id ||
+                  orderId;
 
     const result = await processPayment(txnId, amount, payerEmail);
 
@@ -254,59 +233,40 @@ app.get('/dev/recent-keys', async (req, res) => {
   }
 });
 
-app.post('/api/create-order', async (req, res) => {
+app.post('/api/claim-key', async (req, res) => {
   try {
-    const { email, product } = req.body;
-    if (!email || !product) {
-      return res.status(400).json({ error: 'Email and product required' });
+    const { txnId, email } = req.body;
+    if (!txnId || !email) {
+      return res.status(400).json({ error: 'Transaction ID and email required' });
     }
 
-    const PRICES = {
-      'phantom': { amount: '16.99' },
-      'phantom-dual': { amount: '23.99' },
-      'vinted': { amount: '7.99' },
-      'bundle': { amount: '22.99' },
-    };
+    // Verify the transaction with PayPal
+    let order;
+    try {
+      order = await verifyPayPalOrder(txnId);
+    } catch {
+      return res.status(400).json({ error: 'Invalid transaction ID. Make sure it\'s the PayPal order ID from your receipt.' });
+    }
 
-    const info = PRICES[product];
-    if (!info) return res.status(400).json({ error: 'Invalid product' });
+    const purchaseUnit = order.purchase_units?.[0];
+    const amount = parseFloat(purchaseUnit?.amount?.value || '0');
+    const capturedTxnId = purchaseUnit?.payments?.captures?.[0]?.id || txnId;
 
-    const paypalClient = new Client({
-      clientCredentialsAuthCredentials: {
-        oAuthClientId: process.env.PAYPAL_CLIENT_ID,
-        oAuthClientSecret: process.env.PAYPAL_CLIENT_SECRET,
-      },
-      environment: Environment.Live,
+    const result = await processPayment(capturedTxnId, amount, email);
+
+    if (!result) {
+      return res.status(400).json({ error: 'Unknown product amount. Contact support.' });
+    }
+
+    res.json({
+      success: true,
+      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      product: result.product,
+      email: result.email,
     });
-
-    const ordersController = new OrdersController(paypalClient);
-
-    const { result } = await ordersController.createOrder({
-      body: {
-        intent: 'CAPTURE',
-        purchaseUnits: [{
-          amount: { currencyCode: 'GBP', value: info.amount },
-        }],
-        paymentSource: {
-          paypal: {
-            experienceContext: {
-              returnUrl: `https://larpbase.store/thank-you?email=${encodeURIComponent(email)}&product=${product}`,
-              cancelUrl: `https://larpbase.store/${product === 'vinted' ? 'vinted' : 'phantom'}.html`,
-            },
-          },
-        },
-      },
-      paypalRequestId: `order-${Date.now()}`,
-    });
-
-    const approvalUrl = result.links?.find(l => l.rel === 'payer-action')?.href;
-    if (!approvalUrl) return res.status(500).json({ error: 'No approval URL' });
-
-    res.json({ url: approvalUrl, orderId: result.id });
   } catch (err) {
-    console.error('Create order error:', err.message);
-    if (err.response) console.error('PayPal response:', JSON.stringify(err.response.data || err.response.body));
-    res.status(500).json({ error: 'Failed to create order' });
+    console.error('Claim key error:', err);
+    res.status(500).json({ error: 'Server error. Try again.' });
   }
 });
 

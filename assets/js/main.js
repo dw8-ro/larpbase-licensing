@@ -38,36 +38,4 @@ document.addEventListener('DOMContentLoaded', () => {
     { threshold: 0.1 }
   )
   document.querySelectorAll('.fade-in').forEach(el => observer.observe(el))
-
-  // Custom PayPal buy flow
-  document.querySelectorAll('.buy-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault()
-      const product = btn.dataset.product
-      const email = prompt('Enter your email to receive the license key:')
-      if (!email || !email.includes('@')) return
-
-      btn.disabled = true
-      const origText = btn.innerHTML
-      btn.innerHTML = 'Processing...'
-
-      try {
-        const res = await fetch('/api/create-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, product }),
-        })
-        const data = await res.json()
-        if (data.url) {
-          window.location.href = data.url
-        } else {
-          btn.disabled = false
-          btn.innerHTML = origText
-        }
-      } catch (err) {
-        btn.disabled = false
-        btn.innerHTML = origText
-      }
-    })
-  })
 })
