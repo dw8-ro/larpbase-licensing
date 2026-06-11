@@ -37,10 +37,10 @@ document.addEventListener('DOMContentLoaded', () => {
           if (keyDisplay) keyDisplay.textContent = key
 
           if (phantomLink) {
-            phantomLink.style.display = data.product === 'phantom' || data.product === 'phantom-dual' ? 'flex' : 'none'
+            phantomLink.style.display = data.product === 'phantom' || data.product === 'phantom-dual' || data.product === 'bundle' ? 'flex' : 'none'
           }
           if (vintedLink) {
-            vintedLink.style.display = data.product === 'vinted' ? 'flex' : 'none'
+            vintedLink.style.display = data.product === 'vinted' || data.product === 'bundle' ? 'flex' : 'none'
           }
 
           const productIcon = document.querySelector('.activation-success-icon')
@@ -48,6 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.product === 'phantom' || data.product === 'phantom-dual') {
               productIcon.className = 'activation-success-icon purple'
               productIcon.textContent = '👻'
+            } else if (data.product === 'bundle') {
+              productIcon.className = 'activation-success-icon'
+              productIcon.textContent = '🎉'
             } else {
               productIcon.className = 'activation-success-icon teal'
               productIcon.textContent = '👕'

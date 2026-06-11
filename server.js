@@ -19,6 +19,7 @@ const PRODUCT_MAP = {
   '16.99': 'phantom',
   '23.99': 'phantom-dual',
   '7.99': 'vinted',
+  '22.99': 'bundle',
 };
 
 async function getPayPalAccessToken() {
@@ -72,33 +73,47 @@ app.get('/thank-you', async (req, res) => {
       return res.status(400).send('Unknown product amount');
     }
 
-    const existing = await query('SELECT key_raw, key FROM licenses WHERE paypal_txn = $1', [txnId]);
+    const existing = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1', [txnId]);
     if (existing.rows.length > 0) {
+      const keys = existing.rows.map(r => r.key_raw);
       return res.render('thank-you', {
-        key: existing.rows[0].key_raw,
+        keys: product === 'bundle' ? keys : [keys[0]],
         product,
         email: payerEmail,
       });
     }
 
-    const rawKey = generateKey();
-    const hashedKey = hashKey(rawKey);
-
-    await query(
-      'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [rawKey, hashedKey, 'Active Plan', product, txnId, payerEmail || '', 'active']
-    );
+    let keys = [];
+    if (product === 'bundle') {
+      for (const subProduct of ['phantom', 'vinted']) {
+        const rawKey = generateKey();
+        const hashedKey = hashKey(rawKey);
+        await query(
+          'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [rawKey, hashedKey, 'Active Plan', subProduct, txnId, payerEmail || '', 'active']
+        );
+        keys.push(rawKey);
+      }
+    } else {
+      const rawKey = generateKey();
+      const hashedKey = hashKey(rawKey);
+      await query(
+        'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [rawKey, hashedKey, 'Active Plan', product, txnId, payerEmail || '', 'active']
+      );
+      keys.push(rawKey);
+    }
 
     if (payerEmail) {
       try {
-        await sendLicenseKey(payerEmail, rawKey, product);
+        await sendLicenseKey(payerEmail, keys, product);
       } catch (emailErr) {
         console.error('Email send failed:', emailErr.message);
       }
     }
 
     res.render('thank-you', {
-      key: rawKey,
+      keys: product === 'bundle' ? keys : [keys[0]],
       product,
       email: payerEmail,
     });
@@ -111,29 +126,45 @@ app.get('/thank-you', async (req, res) => {
 app.get('/dev/test-payment/:product', async (req, res) => {
   try {
     const product = req.params.product;
-    if (!['phantom', 'phantom-dual', 'vinted'].includes(product)) {
-      return res.status(400).send('Invalid product. Use: phantom, phantom-dual, or vinted');
+    if (!['phantom', 'phantom-dual', 'vinted', 'bundle'].includes(product)) {
+      return res.status(400).send('Invalid product. Use: phantom, phantom-dual, vinted, or bundle');
     }
 
-    const rawKey = generateKey();
-    const hashedKey = hashKey(rawKey);
-
-    await query(
-      'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [rawKey, hashedKey, 'Active Plan', product, 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
-    );
+    let keys = [];
+    if (product === 'bundle') {
+      for (const subProduct of ['phantom', 'vinted']) {
+        const rawKey = generateKey();
+        const hashedKey = hashKey(rawKey);
+        await query(
+          'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [rawKey, hashedKey, 'Active Plan', subProduct, 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
+        );
+        keys.push(rawKey);
+      }
+    } else {
+      const rawKey = generateKey();
+      const hashedKey = hashKey(rawKey);
+      await query(
+        'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [rawKey, hashedKey, 'Active Plan', product, 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
+      );
+      keys.push(rawKey);
+    }
 
     try {
-      await sendLicenseKey('dev-test@example.com', rawKey, product);
+      await sendLicenseKey('dev-test@example.com', keys, product);
     } catch (e) {}
 
-    res.send(`
-      <h2>Test Payment Simulated</h2>
-      <p><strong>Product:</strong> ${product}</p>
-      <p><strong>Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${rawKey}</code></p>
-      <p>An email was also sent (to dev-test@example.com via Resend).</p>
-      <p><a href="/activation.html">Go to Activation Page →</a></p>
-    `);
+    let html = `<h2>Test Payment Simulated</h2>`;
+    if (product === 'bundle') {
+      html += `<p><strong>Phantom Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[0]}</code></p>`;
+      html += `<p><strong>Vinted Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[1]}</code></p>`;
+    } else {
+      html += `<p><strong>Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[0]}</code></p>`;
+    }
+    html += `<p>An email was also sent (to dev-test@example.com via Resend).</p>`;
+    html += `<p><a href="/activation.html">Go to Activation Page →</a></p>`;
+    res.send(html);
   } catch (err) {
     console.error(err);
     res.status(500).send('Error');

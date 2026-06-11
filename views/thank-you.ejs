@@ -14,6 +14,7 @@
     .key-box{background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px;margin-bottom:24px}
     .key-label{font-size:.8rem;color:rgba(255,255,255,0.4);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
     .key{font-size:1.4rem;font-weight:700;letter-spacing:3px;font-family:monospace;word-break:break-all}
+    .key+.key{margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)}
     .note{font-size:.85rem;color:rgba(255,255,255,0.4);margin-bottom:24px}
     .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;font-weight:600;font-size:.9rem;text-decoration:none;background:linear-gradient(135deg,#8B5CF6,#6366F1);color:#fff;transition:opacity .2s}
     .btn:hover{opacity:.9}
@@ -24,10 +25,17 @@
   <div class="card">
     <div class="icon">✅</div>
     <h1>Payment Confirmed!</h1>
-    <p class="sub">Your license key is ready.</p>
+    <p class="sub"><% if (product === 'bundle') { %>Your license keys are ready.<% } else { %>Your license key is ready.<% } %></p>
     <div class="key-box">
-      <div class="key-label">Your License Key</div>
-      <div class="key"><%= key %></div>
+      <% if (product === 'bundle') { %>
+        <div class="key-label">Larp Phantom Key</div>
+        <div class="key"><%= keys[0] %></div>
+        <div class="key-label" style="margin-top:20px">Larp Vinted Key</div>
+        <div class="key"><%= keys[1] %></div>
+      <% } else { %>
+        <div class="key-label">Your License Key</div>
+        <div class="key"><%= keys[0] %></div>
+      <% } %>
     </div>
     <a href="/activation.html" class="btn">Activate Now →</a>
     <% if (email) { %>
