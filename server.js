@@ -244,7 +244,7 @@ app.get('/dev/recent-keys', async (req, res) => {
 
 app.post('/api/claim-key', async (req, res) => {
   try {
-    const { txnId, email, product } = req.body;
+    const { txnId, email } = req.body;
     if (!txnId || !email) {
       return res.status(400).json({ error: 'Transaction ID and email required' });
     }
@@ -277,15 +277,7 @@ app.post('/api/claim-key', async (req, res) => {
         amount = parseFloat(capture.amount?.value || '0');
         capturedTxnId = capture.id;
       } catch {
-        // PayPal API can't verify — fall back to product from form
-        if (!product) {
-          return res.status(400).json({ error: 'Could not verify this transaction with PayPal. Select the product you purchased and try again.' });
-        }
-        const FALLBACK_PRICES = { 'phantom': 16.99, 'phantom-dual': 23.99, 'vinted': 7.99, 'bundle': 22.99 };
-        amount = FALLBACK_PRICES[product];
-        if (!amount) {
-          return res.status(400).json({ error: 'Invalid product selected.' });
-        }
+        return res.status(400).json({ error: 'Could not verify this transaction with PayPal. Please contact Telegram support with your receipt for manual key delivery.' });
       }
     }
 
@@ -303,6 +295,47 @@ app.post('/api/claim-key', async (req, res) => {
     });
   } catch (err) {
     console.error('Claim key error:', err);
+    res.status(500).json({ error: 'Server error. Try again.' });
+  }
+});
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    paypalClientId: process.env.PAYPAL_CLIENT_ID,
+  });
+});
+
+app.post('/api/paypal-capture', async (req, res) => {
+  try {
+    const { orderId, email } = req.body;
+    if (!orderId || !email) {
+      return res.status(400).json({ error: 'Order ID and email required' });
+    }
+
+    const order = await verifyPayPalOrder(orderId);
+    if (order.status !== 'COMPLETED') {
+      return res.status(400).json({ error: 'Payment not completed' });
+    }
+
+    const purchaseUnit = order.purchase_units?.[0];
+    const amount = parseFloat(purchaseUnit?.amount?.value || '0');
+    const txnId = purchaseUnit?.payments?.captures?.[0]?.id || orderId;
+    const payerEmail = order.payer?.email_address || email;
+
+    const result = await processPayment(txnId, amount, payerEmail);
+
+    if (!result) {
+      return res.status(400).json({ error: 'Unknown product amount. Contact support on Telegram.' });
+    }
+
+    res.json({
+      success: true,
+      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      product: result.product,
+      email: result.email,
+    });
+  } catch (err) {
+    console.error('Capture error:', err);
     res.status(500).json({ error: 'Server error. Try again.' });
   }
 });

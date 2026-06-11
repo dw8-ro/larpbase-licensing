@@ -169,7 +169,7 @@
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>iOS & Android</li>
               <li><svg class="cross" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>Priority support</li>
             </ul>
-            <a href="https://www.paypal.com/ncp/payment/ZNB27F9SWKJJA" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">Buy <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="16" height="16" fill="#FFFFFF"><path d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.9 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"/></svg></a>
+            <div class="paypal-btn-container" data-product="phantom" data-price="16.99"></div>
           </div>
           <div class="pricing-card featured">
             <div class="tag">Most Popular</div>
@@ -182,7 +182,7 @@
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Priority Telegram support</li>
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Early access to features</li>
             </ul>
-            <a href="https://www.paypal.com/ncp/payment/HKTX827MU7RGC" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Buy <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="16" height="16" fill="#FFFFFF"><path d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.9 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"/></svg></a>
+            <div class="paypal-btn-container" data-product="phantom-dual" data-price="23.99"></div>
           </div>
           <div class="pricing-card bundle-featured">
             <div class="tag">Best Value</div>
@@ -195,7 +195,7 @@
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>All updates included</li>
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Priority Telegram support</li>
             </ul>
-            <a href="https://www.paypal.com/ncp/payment/F8DDWXDLHSJKE" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Buy <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="16" height="16" fill="#FFFFFF"><path d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.9 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"/></svg></a>
+            <div class="paypal-btn-container" data-product="bundle" data-price="22.99"></div>
           </div>
         </div>
       </div>
@@ -226,5 +226,66 @@
   </footer>
 
   <script src="assets/js/main.js"></script>
+  <script>
+    async function getPaypalClientId() {
+      const res = await fetch('/api/config')
+      const data = await res.json()
+      return data.paypalClientId
+    }
+
+    async function initPayPalButtons() {
+      const clientId = await getPaypalClientId()
+      const script = document.createElement('script')
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=GBP`
+      script.onload = () => {
+        document.querySelectorAll('.paypal-btn-container').forEach(container => {
+          const product = container.dataset.product
+          const price = container.dataset.price
+          paypal.Buttons({
+            style: { shape: 'rect', color: 'gold', layout: 'vertical', label: 'paypal' },
+            createOrder(data, actions) {
+              const email = prompt('Enter your email to receive the license key:')
+              if (!email || !email.includes('@')) {
+                alert('A valid email address is required.')
+                return Promise.reject()
+              }
+              container.dataset.email = email
+              return actions.order.create({
+                purchase_units: [{ amount: { value: price } }]
+              })
+            },
+            onApprove(data, actions) {
+              return actions.order.capture().then(async details => {
+                const email = container.dataset.email
+                container.innerHTML = '<div style="text-align:center;padding:10px;color:#fff;font-size:.85rem">Processing...</div>'
+                try {
+                  const res = await fetch('/api/paypal-capture', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId: details.id, email })
+                  })
+                  const result = await res.json()
+                  if (result.success) {
+                    const keys = Array.isArray(result.keys) ? result.keys.join(', ') : result.keys
+                    container.innerHTML = `<div style="text-align:center;padding:10px;color:#22c55e;font-size:.85rem;font-weight:600">✓ Key sent to ${result.email}!</div>`
+                  } else {
+                    container.innerHTML = `<div style="text-align:center;padding:10px;color:#ef4444;font-size:.85rem">${result.error || 'Error'}</div>`
+                  }
+                } catch {
+                  container.innerHTML = '<div style="text-align:center;padding:10px;color:#ef4444;font-size:.85rem">Server error. Contact Telegram support.</div>'
+                }
+              })
+            },
+            onError(err) {
+              console.error(err)
+            }
+          }).render(container)
+        })
+      }
+      document.body.appendChild(script)
+    }
+
+    initPayPalButtons()
+  </script>
 </body>
 </html>
