@@ -244,40 +244,55 @@ app.get('/dev/recent-keys', async (req, res) => {
 
 app.post('/api/claim-key', async (req, res) => {
   try {
-    const { txnId, email } = req.body;
+    const { txnId, email, product } = req.body;
     if (!txnId || !email) {
       return res.status(400).json({ error: 'Transaction ID and email required' });
     }
 
-    // Verify the transaction with PayPal (try order lookup, then capture lookup)
-    let paypalData;
+    // Check if transaction was already processed (webhook/IPN)
+    const existingMain = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1', [txnId]);
+    const existingVinted = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [txnId]);
+    if (existingMain.rows.length > 0 || existingVinted.rows.length > 0) {
+      const keys = [];
+      if (existingMain.rows.length > 0) keys.push(existingMain.rows[0].key_raw);
+      if (existingVinted.rows.length > 0) keys.push(existingVinted.rows[0].key);
+      await sendLicenseKey(email, keys, keys.length > 1 ? 'bundle' : 'phantom');
+      return res.json({ success: true, keys, product: keys.length > 1 ? 'bundle' : 'phantom', email });
+    }
+
+    // Try to verify with PayPal API (order lookup, then capture lookup)
+    let amount = 0;
     let capturedTxnId = txnId;
     try {
-      paypalData = await verifyPayPalOrder(txnId);
-      const purchaseUnit = paypalData.purchase_units?.[0];
+      const orderData = await verifyPayPalOrder(txnId);
+      const purchaseUnit = orderData.purchase_units?.[0];
+      amount = parseFloat(purchaseUnit?.amount?.value || '0');
       capturedTxnId = purchaseUnit?.payments?.captures?.[0]?.id || txnId;
     } catch {
-      // Order lookup failed — try capture lookup
       try {
         const capture = await verifyPayPalCapture(txnId);
         if (capture.status !== 'COMPLETED') {
           return res.status(400).json({ error: 'This transaction has not been completed yet.' });
         }
-        paypalData = { amount: capture.amount?.value || '0', status: capture.status };
+        amount = parseFloat(capture.amount?.value || '0');
         capturedTxnId = capture.id;
       } catch {
-        return res.status(400).json({ error: 'Could not verify this transaction. Make sure you entered the PayPal Transaction ID from your receipt (e.g. 4R442658M9145474V).' });
+        // PayPal API can't verify — fall back to product from form
+        if (!product) {
+          return res.status(400).json({ error: 'Could not verify this transaction with PayPal. Select the product you purchased and try again.' });
+        }
+        const FALLBACK_PRICES = { 'phantom': 16.99, 'phantom-dual': 23.99, 'vinted': 7.99, 'bundle': 22.99 };
+        amount = FALLBACK_PRICES[product];
+        if (!amount) {
+          return res.status(400).json({ error: 'Invalid product selected.' });
+        }
       }
     }
-
-    const amount = paypalData.purchase_units
-      ? parseFloat(paypalData.purchase_units[0]?.amount?.value || '0')
-      : parseFloat(paypalData.amount || '0');
 
     const result = await processPayment(capturedTxnId, amount, email);
 
     if (!result) {
-      return res.status(400).json({ error: 'Unknown product amount. Contact support.' });
+      return res.status(400).json({ error: 'Unknown product amount. Contact support on Telegram.' });
     }
 
     res.json({
