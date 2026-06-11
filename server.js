@@ -108,6 +108,38 @@ app.get('/thank-you', async (req, res) => {
   }
 });
 
+app.get('/dev/test-payment/:product', async (req, res) => {
+  try {
+    const product = req.params.product;
+    if (!['phantom', 'phantom-dual', 'vinted'].includes(product)) {
+      return res.status(400).send('Invalid product. Use: phantom, phantom-dual, or vinted');
+    }
+
+    const rawKey = generateKey();
+    const hashedKey = hashKey(rawKey);
+
+    await query(
+      'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [rawKey, hashedKey, 'Active Plan', product, 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
+    );
+
+    try {
+      await sendLicenseKey('dev-test@example.com', rawKey, product);
+    } catch (e) {}
+
+    res.send(`
+      <h2>Test Payment Simulated</h2>
+      <p><strong>Product:</strong> ${product}</p>
+      <p><strong>Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${rawKey}</code></p>
+      <p>An email was also sent (to dev-test@example.com via Resend).</p>
+      <p><a href="/activation.html">Go to Activation Page →</a></p>
+    `);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error');
+  }
+});
+
 app.post('/api/activate', async (req, res) => {
   try {
     const { key } = req.body;
