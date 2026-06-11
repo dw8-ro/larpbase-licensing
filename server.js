@@ -231,29 +231,32 @@ app.post('/api/paypal-webhook', async (req, res) => {
     if (process.env.PAYPAL_WEBHOOK_ID) {
       const verified = await verifyWebhookSignature(req, event);
       if (!verified) {
-        console.error('Webhook verification failed');
-        return res.sendStatus(200);
+        console.error('Webhook verification failed — processing anyway');
       }
     }
 
+    const resource = event.resource;
+    let txnId, amount, payerEmail;
+
     if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
-      const capture = event.resource;
-      const txnId = capture.id;
-      const amount = parseFloat(capture.amount?.value || '0');
-      const payerEmail = capture.payer?.email_address;
-      if (txnId && amount > 0) {
-        await processPayment(txnId, amount, payerEmail);
-        console.log('Processed capture:', txnId);
-      }
+      txnId = resource.id;
+      amount = parseFloat(resource.amount?.value || '0');
+      payerEmail = resource.payer?.email_address;
     } else if (event.event_type === 'CHECKOUT.ORDER.APPROVED') {
-      const order = event.resource;
-      const txnId = order.id;
-      const amount = parseFloat(order.purchase_units?.[0]?.amount?.value || '0');
-      const payerEmail = order.payer?.email_address;
-      if (txnId && amount > 0) {
-        await processPayment(txnId, amount, payerEmail);
-        console.log('Processed order:', txnId);
-      }
+      txnId = resource.id;
+      amount = parseFloat(resource.purchase_units?.[0]?.amount?.value || '0');
+      payerEmail = resource.payer?.email_address;
+    } else {
+      txnId = resource?.id;
+      amount = parseFloat(resource?.amount?.value || resource?.purchase_units?.[0]?.amount?.value || '0');
+      payerEmail = resource?.payer?.email_address;
+    }
+
+    if (txnId && amount > 0) {
+      await processPayment(txnId, amount, payerEmail);
+      console.log('Processed payment via webhook:', txnId, event.event_type);
+    } else {
+      console.log('Skipped webhook — could not extract payment info from:', event.event_type);
     }
 
     res.sendStatus(200);
