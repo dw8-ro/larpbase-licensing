@@ -244,24 +244,23 @@ app.get('/dev/recent-keys', async (req, res) => {
 
 app.post('/api/claim-key', async (req, res) => {
   try {
-    const { txnId, email, product } = req.body;
-    if (!txnId || !email) {
-      return res.status(400).json({ error: 'Transaction ID and email required' });
+    const { txnId } = req.body;
+    if (!txnId) {
+      return res.status(400).json({ error: 'PayPal Order ID required' });
     }
 
-    // Check if transaction was already processed (webhook/IPN)
-    const existingMain = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1', [txnId]);
+    // Check if already processed
+    const existingMain = await query('SELECT key_raw, product FROM licenses WHERE paypal_txn = $1', [txnId]);
     const existingVinted = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [txnId]);
     if (existingMain.rows.length > 0 || existingVinted.rows.length > 0) {
       const keys = [];
       if (existingMain.rows.length > 0) keys.push(existingMain.rows[0].key_raw);
       if (existingVinted.rows.length > 0) keys.push(existingVinted.rows[0].key);
-      const prod = keys.length > 1 ? 'bundle' : (existingMain.rows.length > 0 ? 'phantom' : 'vinted');
-      await sendLicenseKey(email, keys, prod);
-      return res.json({ success: true, keys, product: prod, email });
+      const prod = existingVinted.rows.length > 0 && existingMain.rows.length === 0 ? 'vinted' : (keys.length > 1 ? 'bundle' : 'phantom');
+      return res.json({ success: true, keys, product: prod });
     }
 
-    // Try to verify with PayPal API (order lookup, then capture lookup)
+    // Look up via PayPal API
     let amount = 0;
     let capturedTxnId = txnId;
     try {
@@ -273,34 +272,25 @@ app.post('/api/claim-key', async (req, res) => {
       try {
         const capture = await verifyPayPalCapture(txnId);
         if (capture.status !== 'COMPLETED') {
-          return res.status(400).json({ error: 'This transaction has not been completed yet.' });
+          return res.status(400).json({ error: 'This transaction has not been completed.' });
         }
         amount = parseFloat(capture.amount?.value || '0');
         capturedTxnId = capture.id;
       } catch {
-        // PayPal API can't verify — fall back to user-provided product
-        if (!product) {
-          return res.status(400).json({ error: 'Select the product you purchased and try again.' });
-        }
-        const FALLBACK = { 'phantom': 16.99, 'phantom-dual': 23.99, 'vinted': 7.99, 'bundle': 22.99 };
-        if (!FALLBACK[product]) {
-          return res.status(400).json({ error: 'Invalid product selected.' });
-        }
-        amount = FALLBACK[product];
+        return res.status(400).json({ error: 'Could not verify this order with PayPal. Contact Telegram support with your receipt.' });
       }
     }
 
-    const result = await processPayment(capturedTxnId, amount, email);
+    const result = await processPayment(capturedTxnId, amount, '');
 
     if (!result) {
-      return res.status(400).json({ error: 'Unknown product amount. Contact support on Telegram.' });
+      return res.status(400).json({ error: 'Could not determine your product. Contact Telegram support.' });
     }
 
     res.json({
       success: true,
       keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
       product: result.product,
-      email: result.email,
     });
   } catch (err) {
     console.error('Claim key error:', err);
