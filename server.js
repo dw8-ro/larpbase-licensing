@@ -294,7 +294,7 @@ app.post('/api/create-order', async (req, res) => {
     res.json({ url: approvalUrl, orderId: data.id });
   } catch (err) {
     console.error('Create order error:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Failed to create order' });
+    res.status(500).json({ error: 'Failed to create order', detail: err.response?.data?.message || err.message });
   }
 });
 
