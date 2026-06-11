@@ -162,7 +162,6 @@ app.get('/thank-you', async (req, res) => {
 app.get('/dev/test-payment/:product', async (req, res) => {
   try {
     const product = req.params.product;
-    const testEmail = req.query.email || 'dev-test@example.com';
     if (!['phantom', 'phantom-dual', 'vinted', 'bundle'].includes(product)) {
       return res.status(400).send('Invalid product. Use: phantom, phantom-dual, vinted, or bundle');
     }
@@ -189,7 +188,7 @@ app.get('/dev/test-payment/:product', async (req, res) => {
         } else {
           await query(
             'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-            [rawKey, hashedKey, 'Active Plan', 'phantom', 'DEV-TEST-' + Date.now(), testEmail, 'active']
+            [rawKey, hashedKey, 'Active Plan', 'phantom', 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
           );
         }
         keys.push(rawKey);
@@ -199,13 +198,13 @@ app.get('/dev/test-payment/:product', async (req, res) => {
       const hashedKey = hashKey(rawKey);
       await query(
         'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-        [rawKey, hashedKey, 'Active Plan', product, 'DEV-TEST-' + Date.now(), testEmail, 'active']
+        [rawKey, hashedKey, 'Active Plan', product, 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
       );
       keys.push(rawKey);
     }
 
     try {
-      await sendLicenseKey(testEmail, keys, product);
+      await sendLicenseKey('dev-test@example.com', keys, product);
     } catch (e) {}
 
     let html = `<h2>Test Payment Simulated</h2>`;
@@ -215,7 +214,7 @@ app.get('/dev/test-payment/:product', async (req, res) => {
     } else {
       html += `<p><strong>Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[0]}</code></p>`;
     }
-    html += `<p>An email was also sent (to ${testEmail} via Resend).</p>`;
+    html += `<p>An email was also sent (to dev-test@example.com via Resend).</p>`;
     html += `<p><a href="/activation.html">Go to Activation Page →</a></p>`;
     res.send(html);
   } catch (err) {
