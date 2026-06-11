@@ -266,6 +266,37 @@ app.post('/api/paypal-webhook', async (req, res) => {
   }
 });
 
+app.post('/api/paypal-ipn', async (req, res) => {
+  try {
+    const verifyBody = Object.keys(req.body).map(k =>
+      encodeURIComponent(k) + '=' + encodeURIComponent(req.body[k])
+    ).join('&');
+    const { data } = await axios.post(
+      'https://ipnpb.paypal.com/cgi-bin/webscr',
+      'cmd=_notify-validate&' + verifyBody,
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    );
+
+    if (data !== 'VERIFIED') {
+      return res.sendStatus(200);
+    }
+
+    const txnId = req.body.txn_id;
+    const amount = parseFloat(req.body.mc_gross || '0');
+    const payerEmail = req.body.payer_email;
+
+    if (req.body.payment_status === 'Completed' && txnId && amount > 0) {
+      await processPayment(txnId, amount, payerEmail);
+      console.log('Processed payment via IPN:', txnId);
+    }
+
+    res.sendStatus(200);
+  } catch (err) {
+    console.error('IPN error:', err);
+    res.sendStatus(200);
+  }
+});
+
 app.post('/api/activate', async (req, res) => {
   try {
     const { key } = req.body;
