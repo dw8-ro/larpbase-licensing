@@ -307,22 +307,34 @@ app.get('/api/config', (req, res) => {
 
 app.post('/api/paypal-capture', async (req, res) => {
   try {
-    const { orderId, email } = req.body;
+    const { orderId, captureId, amount: clientAmount, payerEmail, email } = req.body;
     if (!orderId || !email) {
       return res.status(400).json({ error: 'Order ID and email required' });
     }
 
-    const order = await verifyPayPalOrder(orderId);
-    if (order.status !== 'COMPLETED') {
-      return res.status(400).json({ error: 'Payment not completed' });
+    let amount = parseFloat(clientAmount || '0');
+
+    // Try to verify via PayPal API (order lookup, then capture lookup)
+    try {
+      const order = await verifyPayPalOrder(orderId);
+      if (order.status === 'COMPLETED') {
+        const pu = order.purchase_units?.[0];
+        amount = parseFloat(pu?.amount?.value || '0');
+      }
+    } catch {
+      // Order lookup failed — try capture lookup
+      if (captureId) {
+        try {
+          const capture = await verifyPayPalCapture(captureId);
+          if (capture.status === 'COMPLETED') {
+            amount = parseFloat(capture.amount?.value || '0');
+          }
+        } catch {}
+      }
     }
 
-    const purchaseUnit = order.purchase_units?.[0];
-    const amount = parseFloat(purchaseUnit?.amount?.value || '0');
-    const txnId = purchaseUnit?.payments?.captures?.[0]?.id || orderId;
-    const payerEmail = order.payer?.email_address || email;
-
-    const result = await processPayment(txnId, amount, payerEmail);
+    const txnId = captureId || orderId;
+    const result = await processPayment(txnId, amount, payerEmail || email);
 
     if (!result) {
       return res.status(400).json({ error: 'Unknown product amount. Contact support on Telegram.' });

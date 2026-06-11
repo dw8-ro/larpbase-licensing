@@ -50,11 +50,18 @@ function renderPayPalButton(container) {
       return actions.order.capture().then(async details => {
         const email = container.dataset.email
         container.innerHTML = '<div style="text-align:center;padding:10px;color:#fff;font-size:.85rem">Processing...</div>'
+        const capture = details.purchase_units?.[0]?.payments?.captures?.[0] || {}
         try {
           const res = await fetch('/api/paypal-capture', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId: details.id, email })
+            body: JSON.stringify({
+              orderId: details.id,
+              captureId: capture.id,
+              amount: details.purchase_units?.[0]?.amount?.value,
+              payerEmail: details.payer?.email_address,
+              email
+            })
           })
           const result = await res.json()
           if (result.success) {
@@ -73,7 +80,8 @@ function renderPayPalButton(container) {
     },
     onError(err) {
       console.error(err)
-      renderInitialButtons(container)
+      container.innerHTML = '<div style="text-align:center;padding:10px;color:#ef4444;font-size:.85rem">Payment failed. Try again or use a different card.</div>'
+      setTimeout(() => renderInitialButtons(container), 3000)
     }
   }).render(container)
 }
