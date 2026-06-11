@@ -49,8 +49,10 @@ function renderPayPalButton(container) {
     onApprove(data, actions) {
       return actions.order.capture().then(async details => {
         const email = container.dataset.email
+        const price = container.dataset.price
         container.innerHTML = '<div style="text-align:center;padding:10px;color:#fff;font-size:.85rem">Processing...</div>'
         const capture = details.purchase_units?.[0]?.payments?.captures?.[0] || {}
+        const paypalAmount = details.purchase_units?.[0]?.amount?.value
         try {
           const res = await fetch('/api/paypal-capture', {
             method: 'POST',
@@ -58,7 +60,7 @@ function renderPayPalButton(container) {
             body: JSON.stringify({
               orderId: details.id,
               captureId: capture.id,
-              amount: details.purchase_units?.[0]?.amount?.value,
+              amount: paypalAmount || price,
               payerEmail: details.payer?.email_address,
               email
             })

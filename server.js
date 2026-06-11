@@ -308,11 +308,14 @@ app.get('/api/config', (req, res) => {
 app.post('/api/paypal-capture', async (req, res) => {
   try {
     const { orderId, captureId, amount: clientAmount, payerEmail, email } = req.body;
+    console.log('Capture body:', JSON.stringify({ orderId, captureId, clientAmount, payerEmail, email }));
+
     if (!orderId || !email) {
       return res.status(400).json({ error: 'Order ID and email required' });
     }
 
     let amount = parseFloat(clientAmount || '0');
+    console.log('Initial amount:', amount);
 
     // Try to verify via PayPal API (order lookup, then capture lookup)
     try {
