@@ -410,6 +410,15 @@ nav{
   background:var(--accent-gradient);
   color:#fff
 }
+.pricing-card.bundle-featured{
+  border-color:#F59E0B;
+  box-shadow:0 0 40px rgba(245,158,11,0.25), 0 0 0 2px rgba(245,158,11,0.15);
+  background:linear-gradient(180deg,rgba(245,158,11,0.08),transparent 60%)
+}
+.pricing-card.bundle-featured .tag{
+  background:linear-gradient(135deg,#F59E0B,#F97316);
+  color:#fff
+}
 .pricing-card .price{font-size:2.8rem;font-weight:800;letter-spacing:-1.5px;line-height:1}
 .pricing-card .price-sub{font-size:.85rem;color:var(--text-muted);margin:8px 0 20px}
 .pricing-features{list-style:none;margin-bottom:24px;flex:1;display:flex;flex-direction:column;gap:10px;text-align:left}
