@@ -75,16 +75,9 @@
           <details style="margin-top:24px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.06)">
             <summary style="cursor:pointer;font-size:.85rem;color:var(--text-muted);text-align:center;font-weight:500">Didn't receive your key? Recover it here</summary>
             <div style="margin-top:16px">
-              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Enter the PayPal Order ID from your receipt and select what you purchased.</p>
+              <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Enter the transaction ID from your PayPal receipt.</p>
               <div id="claimStatus" style="display:none;padding:10px;border-radius:8px;margin-bottom:12px;font-size:.85rem"></div>
-              <input type="text" id="claimTxn" placeholder="PayPal Order ID from receipt (e.g. 1UC04612R3331122P)" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:12px;box-sizing:border-box">
-              <select id="claimProduct" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:12px;box-sizing:border-box">
-                <option value="">— Select product —</option>
-                <option value="phantom">Phantom — £16.99</option>
-                <option value="phantom-dual">Phantom Dual — £23.99</option>
-                <option value="vinted">Vinted — £7.99</option>
-                <option value="bundle">Bundle (Phantom+Vinted) — £22.99</option>
-              </select>
+              <input type="text" id="claimTxn" placeholder="Transaction ID from receipt (e.g. 1UC04612R3331122P)" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:12px;box-sizing:border-box">
               <button onclick="claimKey()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:.85rem;font-weight:600;cursor:pointer">Recover My Key</button>
             </div>
           </details>
@@ -123,15 +116,13 @@
   <script>
     async function claimKey() {
       const txnId = document.getElementById('claimTxn').value.trim()
-      const product = document.getElementById('claimProduct').value
       const status = document.getElementById('claimStatus')
-      if (!txnId) { status.style.display = 'block'; status.style.background = 'rgba(239,68,68,0.15)'; status.textContent = 'Please enter your PayPal Order ID'; return }
-      if (!product) { status.style.display = 'block'; status.style.background = 'rgba(239,68,68,0.15)'; status.textContent = 'Please select what you purchased'; return }
+      if (!txnId) { status.style.display = 'block'; status.style.background = 'rgba(239,68,68,0.15)'; status.textContent = 'Please enter your transaction ID'; return }
       status.style.display = 'block'
       status.style.background = 'rgba(255,255,255,0.05)'
       status.textContent = 'Processing...'
       try {
-        const res = await fetch('/api/claim-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txnId, product }) })
+        const res = await fetch('/api/claim-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txnId }) })
         const data = await res.json()
         if (data.success) {
           const keysHtml = Array.isArray(data.keys) ? data.keys.map(k => `<code style="display:block;font-size:1.3rem;letter-spacing:2px;padding:12px;background:rgba(255,255,255,0.08);border-radius:8px;margin:8px 0;text-align:center">${k}</code>`).join('') : `<code style="display:block;font-size:1.3rem;letter-spacing:2px;padding:12px;background:rgba(255,255,255,0.08);border-radius:8px;margin:8px 0;text-align:center">${data.keys}</code>`
