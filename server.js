@@ -43,6 +43,15 @@ async function verifyPayPalOrder(orderId) {
   return data;
 }
 
+async function verifyPayPalCapture(captureId) {
+  const token = await getPayPalAccessToken();
+  const { data } = await axios.get(
+    `${PAYPAL_API}/v2/payments/captures/${captureId}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return data;
+}
+
 async function verifyWebhookSignature(req, event) {
   try {
     const token = await getPayPalAccessToken();
@@ -240,17 +249,30 @@ app.post('/api/claim-key', async (req, res) => {
       return res.status(400).json({ error: 'Transaction ID and email required' });
     }
 
-    // Verify the transaction with PayPal
-    let order;
+    // Verify the transaction with PayPal (try order lookup, then capture lookup)
+    let paypalData;
+    let capturedTxnId = txnId;
     try {
-      order = await verifyPayPalOrder(txnId);
+      paypalData = await verifyPayPalOrder(txnId);
+      const purchaseUnit = paypalData.purchase_units?.[0];
+      capturedTxnId = purchaseUnit?.payments?.captures?.[0]?.id || txnId;
     } catch {
-      return res.status(400).json({ error: 'Invalid transaction ID. Make sure it\'s the PayPal order ID from your receipt.' });
+      // Order lookup failed — try capture lookup
+      try {
+        const capture = await verifyPayPalCapture(txnId);
+        if (capture.status !== 'COMPLETED') {
+          return res.status(400).json({ error: 'This transaction has not been completed yet.' });
+        }
+        paypalData = { amount: capture.amount?.value || '0', status: capture.status };
+        capturedTxnId = capture.id;
+      } catch {
+        return res.status(400).json({ error: 'Could not verify this transaction. Make sure you entered the PayPal Transaction ID from your receipt (e.g. 4R442658M9145474V).' });
+      }
     }
 
-    const purchaseUnit = order.purchase_units?.[0];
-    const amount = parseFloat(purchaseUnit?.amount?.value || '0');
-    const capturedTxnId = purchaseUnit?.payments?.captures?.[0]?.id || txnId;
+    const amount = paypalData.purchase_units
+      ? parseFloat(paypalData.purchase_units[0]?.amount?.value || '0')
+      : parseFloat(paypalData.amount || '0');
 
     const result = await processPayment(capturedTxnId, amount, email);
 
