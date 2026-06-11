@@ -226,66 +226,6 @@
   </footer>
 
   <script src="assets/js/main.js"></script>
-  <script>
-    async function getPaypalClientId() {
-      const res = await fetch('/api/config')
-      const data = await res.json()
-      return data.paypalClientId
-    }
-
-    async function initPayPalButtons() {
-      const clientId = await getPaypalClientId()
-      const script = document.createElement('script')
-      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=GBP`
-      script.onload = () => {
-        document.querySelectorAll('.paypal-btn-container').forEach(container => {
-          const product = container.dataset.product
-          const price = container.dataset.price
-          paypal.Buttons({
-            style: { shape: 'rect', color: 'gold', layout: 'vertical', label: 'paypal' },
-            createOrder(data, actions) {
-              const email = prompt('Enter your email to receive the license key:')
-              if (!email || !email.includes('@')) {
-                alert('A valid email address is required.')
-                return Promise.reject()
-              }
-              container.dataset.email = email
-              return actions.order.create({
-                purchase_units: [{ amount: { value: price } }]
-              })
-            },
-            onApprove(data, actions) {
-              return actions.order.capture().then(async details => {
-                const email = container.dataset.email
-                container.innerHTML = '<div style="text-align:center;padding:10px;color:#fff;font-size:.85rem">Processing...</div>'
-                try {
-                  const res = await fetch('/api/paypal-capture', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ orderId: details.id, email })
-                  })
-                  const result = await res.json()
-                  if (result.success) {
-                    const keys = Array.isArray(result.keys) ? result.keys.join(', ') : result.keys
-                    container.innerHTML = `<div style="text-align:center;padding:10px;color:#22c55e;font-size:.85rem;font-weight:600">✓ Key sent to ${result.email}!</div>`
-                  } else {
-                    container.innerHTML = `<div style="text-align:center;padding:10px;color:#ef4444;font-size:.85rem">${result.error || 'Error'}</div>`
-                  }
-                } catch {
-                  container.innerHTML = '<div style="text-align:center;padding:10px;color:#ef4444;font-size:.85rem">Server error. Contact Telegram support.</div>'
-                }
-              })
-            },
-            onError(err) {
-              console.error(err)
-            }
-          }).render(container)
-        })
-      }
-      document.body.appendChild(script)
-    }
-
-    initPayPalButtons()
-  </script>
+  <script src="assets/js/paypal-init.js"></script>
 </body>
 </html>
