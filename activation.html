@@ -78,7 +78,14 @@
               <p style="font-size:.8rem;color:var(--text-muted);margin-bottom:12px">Enter the PayPal transaction ID from your receipt and your email, and we'll send your key.</p>
               <div id="claimStatus" style="display:none;padding:10px;border-radius:8px;margin-bottom:12px;font-size:.85rem"></div>
               <input type="text" id="claimTxn" placeholder="PayPal Transaction ID" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:8px;box-sizing:border-box">
-              <input type="email" id="claimEmail" placeholder="Your email address" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:12px;box-sizing:border-box">
+              <input type="email" id="claimEmail" placeholder="Your email address" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:8px;box-sizing:border-box">
+              <select id="claimProduct" style="width:100%;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--text);font-size:.85rem;margin-bottom:12px;box-sizing:border-box">
+                <option value="">Select product you purchased</option>
+                <option value="phantom">Phantom — £16.99</option>
+                <option value="phantom-dual">Phantom Dual — £23.99</option>
+                <option value="vinted">Vinted — £7.99</option>
+                <option value="bundle">Bundle (Phantom+Vinted) — £22.99</option>
+              </select>
               <button onclick="claimKey()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:.85rem;font-weight:600;cursor:pointer">Claim License Key</button>
             </div>
           </details>
@@ -118,13 +125,15 @@
     async function claimKey() {
       const txnId = document.getElementById('claimTxn').value.trim()
       const email = document.getElementById('claimEmail').value.trim()
+      const product = document.getElementById('claimProduct').value
       const status = document.getElementById('claimStatus')
       if (!txnId || !email) { status.style.display = 'block'; status.style.background = 'rgba(239,68,68,0.15)'; status.textContent = 'Please fill in both fields'; return }
+      if (!product) { status.style.display = 'block'; status.style.background = 'rgba(239,68,68,0.15)'; status.textContent = 'Please select the product you purchased'; return }
       status.style.display = 'block'
       status.style.background = 'rgba(255,255,255,0.05)'
       status.textContent = 'Processing...'
       try {
-        const res = await fetch('/api/claim-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txnId, email }) })
+        const res = await fetch('/api/claim-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txnId, email, product }) })
         const data = await res.json()
         if (data.success) {
           const keys = Array.isArray(data.keys) ? data.keys.join(', ') : data.keys
