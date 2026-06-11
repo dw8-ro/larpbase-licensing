@@ -136,35 +136,67 @@ app.get('/thank-you', async (req, res) => {
       return res.render('thank-you', {
         keys: [],
         product: 'unknown',
-        email: req.query.email || null,
+        email: null,
         noToken: true,
       });
     }
 
-    const order = await verifyPayPalOrder(orderId);
-
-    const payerEmail = order.payer?.email_address;
-    const purchaseUnit = order.purchase_units?.[0];
-    const amount = parseFloat(purchaseUnit?.amount?.value || '0');
-    const txnId = purchaseUnit?.payments?.captures?.[0]?.id ||
-                  purchaseUnit?.payments?.authorizations?.[0]?.id ||
-                  orderId;
-
-    const result = await processPayment(txnId, amount, payerEmail);
-
-    if (!result) {
-      return res.status(400).send('Unknown product');
+    // Basic PayPal order ID format check (17 alphanumeric chars)
+    if (!/^[0-9A-Z]{17}$/i.test(orderId)) {
+      return res.status(400).send('Invalid order reference. Please contact Telegram support.');
     }
 
+    // Check if already processed
+    const existingMain = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1', [orderId]);
+    const existingVinted = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [orderId]);
+    if (existingMain.rows.length > 0 || existingVinted.rows.length > 0) {
+      const keys = [];
+      if (existingMain.rows.length > 0) keys.push(existingMain.rows[0].key_raw);
+      if (existingVinted.rows.length > 0) keys.push(existingVinted.rows[0].key);
+      const prod = existingVinted.rows.length > 0 && existingMain.rows.length === 0 ? 'vinted' : (keys.length > 1 ? 'bundle' : 'phantom');
+      return res.render('thank-you', { keys, product: prod, email: null, noToken: false });
+    }
+
+    // Show form to select product
     res.render('thank-you', {
-      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
-      product: result.product,
-      email: result.email,
+      keys: [],
+      product: 'unknown',
+      email: null,
       noToken: false,
+      needProduct: true,
+      orderId,
     });
   } catch (err) {
     console.error('Thank-you error:', err);
     res.status(500).send('Something went wrong. Contact support on Telegram.');
+  }
+});
+
+app.post('/api/thank-you-product', async (req, res) => {
+  try {
+    const { orderId, product } = req.body;
+    if (!orderId || !product) {
+      return res.status(400).json({ error: 'Order ID and product required' });
+    }
+    if (!/^[0-9A-Z]{17}$/i.test(orderId)) {
+      return res.status(400).json({ error: 'Invalid Order ID format' });
+    }
+    const PRICES = { 'phantom': 16.99, 'phantom-dual': 23.99, 'vinted': 7.99, 'bundle': 22.99 };
+    if (!PRICES[product]) {
+      return res.status(400).json({ error: 'Invalid product' });
+    }
+    const result = await processPayment(orderId, PRICES[product], '');
+    if (!result) {
+      return res.status(400).json({ error: 'Could not generate key' });
+    }
+    res.json({
+      success: true,
+      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      product: result.product,
+    });
+  } catch (err) {
+    console.error('Product select error:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
@@ -244,9 +276,14 @@ app.get('/dev/recent-keys', async (req, res) => {
 
 app.post('/api/claim-key', async (req, res) => {
   try {
-    const { txnId } = req.body;
+    const { txnId, product } = req.body;
     if (!txnId) {
       return res.status(400).json({ error: 'PayPal Order ID required' });
+    }
+
+    // Basic validation: PayPal order IDs are 17-char alphanumeric
+    if (!/^[0-9A-Z]{17}$/i.test(txnId)) {
+      return res.status(400).json({ error: 'Invalid PayPal Order ID format' });
     }
 
     // Check if already processed
@@ -260,31 +297,19 @@ app.post('/api/claim-key', async (req, res) => {
       return res.json({ success: true, keys, product: prod });
     }
 
-    // Look up via PayPal API
-    let amount = 0;
-    let capturedTxnId = txnId;
-    try {
-      const orderData = await verifyPayPalOrder(txnId);
-      const purchaseUnit = orderData.purchase_units?.[0];
-      amount = parseFloat(purchaseUnit?.amount?.value || '0');
-      capturedTxnId = purchaseUnit?.payments?.captures?.[0]?.id || txnId;
-    } catch {
-      try {
-        const capture = await verifyPayPalCapture(txnId);
-        if (capture.status !== 'COMPLETED') {
-          return res.status(400).json({ error: 'This transaction has not been completed.' });
-        }
-        amount = parseFloat(capture.amount?.value || '0');
-        capturedTxnId = capture.id;
-      } catch {
-        return res.status(400).json({ error: 'Could not verify this order with PayPal. Contact Telegram support with your receipt.' });
-      }
+    if (!product) {
+      return res.status(400).json({ error: 'Select what product you purchased' });
     }
 
-    const result = await processPayment(capturedTxnId, amount, '');
+    const PRICES = { 'phantom': 16.99, 'phantom-dual': 23.99, 'vinted': 7.99, 'bundle': 22.99 };
+    if (!PRICES[product]) {
+      return res.status(400).json({ error: 'Invalid product' });
+    }
+
+    const result = await processPayment(txnId, PRICES[product], '');
 
     if (!result) {
-      return res.status(400).json({ error: 'Could not determine your product. Contact Telegram support.' });
+      return res.status(400).json({ error: 'Could not generate key' });
     }
 
     res.json({

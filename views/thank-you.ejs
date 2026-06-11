@@ -16,43 +16,79 @@
     .key{font-size:1.4rem;font-weight:700;letter-spacing:3px;font-family:monospace;word-break:break-all}
     .key+.key{margin-top:20px;padding-top:20px;border-top:1px solid rgba(255,255,255,0.08)}
     .note{font-size:.85rem;color:rgba(255,255,255,0.4);margin-bottom:24px}
-    .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;font-weight:600;font-size:.9rem;text-decoration:none;background:linear-gradient(135deg,#8B5CF6,#6366F1);color:#fff;transition:opacity .2s}
+    .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:10px;font-weight:600;font-size:.9rem;text-decoration:none;background:linear-gradient(135deg,#8B5CF6,#6366F1);color:#fff;transition:opacity .2s;cursor:pointer;border:none}
     .btn:hover{opacity:.9}
-    .email-note{font-size:.8rem;color:rgba(255,255,255,0.3);margin-top:16px}
+    select{padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.06);color:#fff;font-size:.9rem;width:100%;margin-bottom:12px;outline:none}
+    .error{color:#ef4444;font-size:.85rem;margin-top:8px}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="icon"><% if (noToken) { %>⏳<% } else { %>✅<% } %></div>
-    <h1><% if (noToken) { %>Payment Received!<% } else { %>Payment Confirmed!<% } %></h1>
-    <p class="sub">
-      <% if (noToken) { %>
-        Your license key is being sent to your email — it should arrive within a few minutes.
-      <% } else if (product === 'bundle') { %>
-        Your license keys are ready.
-      <% } else { %>
-        Your license key is ready.
-      <% } %>
-    </p>
-    <% if (!noToken) { %>
-    <div class="key-box">
-      <% if (product === 'bundle') { %>
-        <div class="key-label">Larp Phantom Key</div>
-        <div class="key"><%= keys[0] %></div>
-        <div class="key-label" style="margin-top:20px">Larp Vinted Key</div>
-        <div class="key"><%= keys[1] %></div>
-      <% } else { %>
-        <div class="key-label">Your License Key</div>
-        <div class="key"><%= keys[0] %></div>
-      <% } %>
-    </div>
-    <a href="/activation.html" class="btn">Activate Now →</a>
-    <% if (email) { %>
-      <p class="email-note">A copy has also been sent to <%= email %></p>
-    <% } %>
+    <% if (noToken) { %>
+      <div class="icon">⏳</div>
+      <h1>Payment Received!</h1>
+      <p class="sub">Your license key is being sent to your email — it should arrive within a few minutes.</p>
+      <a href="/activation.html" class="btn">Go to Activation →</a>
+    <% } else if (needProduct && orderId) { %>
+      <div class="icon">✅</div>
+      <h1>Payment Confirmed!</h1>
+      <p class="sub">Select what you purchased to receive your license key.</p>
+      <select id="productSelect">
+        <option value="">— Select product —</option>
+        <option value="phantom">Phantom — £16.99</option>
+        <option value="phantom-dual">Phantom Dual — £23.99</option>
+        <option value="vinted">Vinted — £7.99</option>
+        <option value="bundle">Bundle (Phantom+Vinted) — £22.99</option>
+      </select>
+      <button class="btn" onclick="getKey()" style="width:100%;justify-content:center">Get My Key</button>
+      <div id="keyResult"></div>
+      <p class="sub" style="margin-top:16px;font-size:.8rem">Need help? <a href="https://t.me/larpbase7/203" style="color:#8B5CF6">Telegram Support</a></p>
     <% } else { %>
-    <a href="/activation.html" class="btn">Go to Activation →</a>
+      <div class="icon">✅</div>
+      <h1>Payment Confirmed!</h1>
+      <p class="sub"><%= product === 'bundle' ? 'Your license keys are ready.' : 'Your license key is ready.' %></p>
+      <div class="key-box">
+        <% if (product === 'bundle') { %>
+          <div class="key-label">Larp Phantom Key</div>
+          <div class="key"><%= keys[0] %></div>
+          <div class="key-label" style="margin-top:20px">Larp Vinted Key</div>
+          <div class="key"><%= keys[1] %></div>
+        <% } else { %>
+          <div class="key-label">Your License Key</div>
+          <div class="key"><%= keys[0] %></div>
+        <% } %>
+      </div>
+      <a href="/activation.html" class="btn">Activate Now →</a>
     <% } %>
   </div>
+  <script>
+    async function getKey() {
+      const product = document.getElementById('productSelect').value
+      if (!product) return
+      const status = document.getElementById('keyResult')
+      status.innerHTML = '<p style="color:rgba(255,255,255,0.4);margin-top:12px">Generating your key...</p>'
+      try {
+        const res = await fetch('/api/thank-you-product', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: '<%= orderId %>', product })
+        })
+        const data = await res.json()
+        if (data.success) {
+          const keys = Array.isArray(data.keys) ? data.keys : [data.keys]
+          status.innerHTML = '<div class="key-box" style="margin-top:12px">' +
+            keys.map((k, i) => {
+              const label = data.product === 'bundle' ? (i === 0 ? 'Larp Phantom Key' : 'Larp Vinted Key') : 'Your License Key'
+              return `<div class="key-label">${label}</div><div class="key">${k}</div>`
+            }).join('<div style="height:12px"></div>') +
+          '</div><a href="/activation.html" class="btn">Activate Now →</a>'
+        } else {
+          status.innerHTML = '<p class="error">' + (data.error || 'Error') + '</p>'
+        }
+      } catch {
+        status.innerHTML = '<p class="error">Server error. Contact Telegram support.</p>'
+      }
+    }
+  </script>
 </body>
 </html>
