@@ -5,8 +5,23 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+const vintedPool = new Pool({
+  connectionString: process.env.VINTED_DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+});
+
 async function query(text, params) {
   const client = await pool.connect();
+  try {
+    const result = await client.query(text, params);
+    return result;
+  } finally {
+    client.release();
+  }
+}
+
+async function vintedQuery(text, params) {
+  const client = await vintedPool.connect();
   try {
     const result = await client.query(text, params);
     return result;
@@ -34,6 +49,15 @@ async function createTables() {
     )
   `);
   console.log('✓ licenses table ready');
+
+  try {
+    await vintedQuery(`
+      ALTER TABLE license_keys ADD COLUMN IF NOT EXISTS paypal_txn TEXT
+    `);
+    console.log('✓ license_keys table ready (paypal_txn column ensured)');
+  } catch (err) {
+    console.error('Vinted DB init error:', err.message);
+  }
 }
 
-module.exports = { query, createTables };
+module.exports = { query, vintedQuery, createTables };

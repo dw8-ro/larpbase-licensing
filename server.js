@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const axios = require('axios');
-const { query, createTables } = require('./db');
+const { query, vintedQuery, createTables } = require('./db');
 const { generateKey, hashKey } = require('./keygen');
 const { sendLicenseKey } = require('./email');
 
@@ -83,15 +83,68 @@ app.get('/thank-you', async (req, res) => {
       });
     }
 
+    if (product === 'vinted') {
+      const existingVinted = await vintedQuery('SELECT key_hash FROM license_keys WHERE paypal_txn = $1', [txnId]);
+      if (existingVinted.rows.length > 0) {
+        const vintedKey = existingVinted.rows[0];
+        const rawResult = await vintedQuery('SELECT key FROM license_keys WHERE key_hash = $1', [vintedKey.key_hash]);
+        return res.render('thank-you', {
+          keys: [rawResult.rows[0]?.key],
+          product: 'vinted',
+          email: payerEmail,
+        });
+      }
+
+      const rawKey = generateKey();
+      const hashedKey = hashKey(rawKey);
+      await vintedQuery(
+        'INSERT INTO license_keys (key_hash, key, status, single_device, paypal_txn) VALUES ($1, $2, $3, $4, $5)',
+        [hashedKey, rawKey, 'active', true, txnId]
+      );
+
+      if (payerEmail) {
+        try {
+          await sendLicenseKey(payerEmail, [rawKey], 'vinted');
+        } catch (emailErr) {
+          console.error('Email send failed:', emailErr.message);
+        }
+      }
+
+      return res.render('thank-you', {
+        keys: [rawKey],
+        product: 'vinted',
+        email: payerEmail,
+      });
+    }
+
     let keys = [];
     if (product === 'bundle') {
+      const existingBundle = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [txnId]);
+      if (existingBundle.rows.length > 0) {
+        const phantomRow = await query('SELECT key_raw FROM licenses WHERE paypal_txn = $1 AND product = $2', [txnId, 'phantom']);
+        if (phantomRow.rows.length > 0) {
+          return res.render('thank-you', {
+            keys: [phantomRow.rows[0].key_raw, existingBundle.rows[0].key],
+            product: 'bundle',
+            email: payerEmail,
+          });
+        }
+      }
+
       for (const subProduct of ['phantom', 'vinted']) {
         const rawKey = generateKey();
         const hashedKey = hashKey(rawKey);
-        await query(
-          'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [rawKey, hashedKey, 'Active Plan', subProduct, txnId, payerEmail || '', 'active']
-        );
+        if (subProduct === 'vinted') {
+          await vintedQuery(
+            'INSERT INTO license_keys (key_hash, key, status, single_device, paypal_txn) VALUES ($1, $2, $3, $4, $5)',
+            [hashedKey, rawKey, 'active', true, txnId]
+          );
+        } else {
+          await query(
+            'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [rawKey, hashedKey, 'Active Plan', 'phantom', txnId, payerEmail || '', 'active']
+          );
+        }
         keys.push(rawKey);
       }
     } else {
@@ -131,14 +184,30 @@ app.get('/dev/test-payment/:product', async (req, res) => {
     }
 
     let keys = [];
-    if (product === 'bundle') {
+
+    if (product === 'vinted') {
+      const rawKey = generateKey();
+      const hashedKey = hashKey(rawKey);
+      await vintedQuery(
+        'INSERT INTO license_keys (key_hash, key, status, single_device, paypal_txn) VALUES ($1, $2, $3, $4, $5)',
+        [hashedKey, rawKey, 'active', true, 'DEV-TEST-' + Date.now()]
+      );
+      keys.push(rawKey);
+    } else if (product === 'bundle') {
       for (const subProduct of ['phantom', 'vinted']) {
         const rawKey = generateKey();
         const hashedKey = hashKey(rawKey);
-        await query(
-          'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-          [rawKey, hashedKey, 'Active Plan', subProduct, 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
-        );
+        if (subProduct === 'vinted') {
+          await vintedQuery(
+            'INSERT INTO license_keys (key_hash, key, status, single_device, paypal_txn) VALUES ($1, $2, $3, $4, $5)',
+            [hashedKey, rawKey, 'active', true, 'DEV-TEST-' + Date.now()]
+          );
+        } else {
+          await query(
+            'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+            [rawKey, hashedKey, 'Active Plan', 'phantom', 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
+          );
+        }
         keys.push(rawKey);
       }
     } else {
@@ -180,10 +249,18 @@ app.post('/api/activate', async (req, res) => {
     }
 
     const hashedKey = hashKey(key.toUpperCase());
-    const result = await query(
-      'SELECT plan, status, key_raw FROM licenses WHERE key = $1',
+
+    let result = await query(
+      'SELECT plan, status, key_raw, product FROM licenses WHERE key = $1',
       [hashedKey]
     );
+
+    if (result.rows.length === 0) {
+      result = await vintedQuery(
+        'SELECT status, key FROM license_keys WHERE key_hash = $1',
+        [hashedKey]
+      );
+    }
 
     if (result.rows.length === 0) {
       return res.json({ success: false, error: 'Invalid license key' });
@@ -195,13 +272,22 @@ app.post('/api/activate', async (req, res) => {
       return res.json({ success: false, error: 'This key has already been activated' });
     }
 
-    const product = await query('SELECT product FROM licenses WHERE key = $1', [hashedKey]);
-    await query('UPDATE licenses SET status = $1 WHERE key = $2', ['activated', hashedKey]);
+    let productName;
+    if (license.key_raw !== undefined) {
+      productName = license.product;
+      await query('UPDATE licenses SET status = $1 WHERE key = $2', ['activated', hashedKey]);
+    } else {
+      productName = 'vinted';
+      await vintedQuery(
+        'UPDATE license_keys SET status = $1, updated_at = NOW() WHERE key_hash = $2',
+        ['activated', hashedKey]
+      );
+    }
 
     res.json({
       success: true,
-      product: product.rows[0]?.product || 'phantom',
-      key: license.key_raw,
+      product: productName,
+      key: license.key_raw || license.key,
     });
   } catch (err) {
     console.error('Activation error:', err);
