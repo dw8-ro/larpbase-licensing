@@ -93,7 +93,7 @@ async function processPayment(txnId, amount, payerEmail) {
     const exist = await query('SELECT key_raw FROM licenses WHERE paypal_txn=$1', [txnId]);
     if (exist.rows.length > 0) {
       const keys = exist.rows.map(r => r.key_raw);
-      return { keys: product === 'bundle' ? keys : [keys[0]], product, email: payerEmail };
+      return { keys: product === 'bundle' || product === 'phantom-dual' ? keys : [keys[0]], product, email: payerEmail };
     }
   }
 
@@ -102,6 +102,12 @@ async function processPayment(txnId, amount, payerEmail) {
     const k = generateKey(); const h = hashKey(k);
     await vintedQuery('INSERT INTO license_keys (key_hash,key,status,single_device,paypal_txn) VALUES($1,$2,$3,$4,$5)', [h,k,'active',true,txnId]);
     keys.push(k);
+  } else if (product === 'phantom-dual') {
+    for (let i = 0; i < 2; i++) {
+      const k = generateKey(); const h = hashKey(k);
+      await query('INSERT INTO licenses (key_raw,key,plan,product,paypal_txn,customer_email,status) VALUES($1,$2,$3,$4,$5,$6,$7)', [k,h,'Active Plan','phantom-dual',txnId,payerEmail||'','active']);
+      keys.push(k);
+    }
   } else if (product === 'bundle') {
     for (const sub of ['phantom','vinted']) {
       const k = generateKey(); const h = hashKey(k);
@@ -158,7 +164,7 @@ app.get('/thank-you', async (req, res) => {
       const keys = [];
       let prod = 'unknown';
       if (existingMain.rows.length > 0) {
-        keys.push(existingMain.rows[0].key_raw);
+        for (const row of existingMain.rows) { keys.push(row.key_raw); }
         prod = existingMain.rows[0].product;
       }
       if (existingVinted.rows.length > 0) {
@@ -198,7 +204,7 @@ app.get('/thank-you', async (req, res) => {
       const result = await processPayment(saleId, amount, '');
       if (result) {
         return res.render('thank-you', {
-          keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+          keys: result.product === 'bundle' || result.product === 'phantom-dual' ? result.keys : [result.keys[0]],
           product: result.product,
           email: null,
           noToken: false,
@@ -232,7 +238,7 @@ app.post('/api/thank-you-product', async (req, res) => {
         if (result) {
           return res.json({
             success: true,
-            keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+          keys: result.product === 'bundle' || result.product === 'phantom-dual' ? result.keys : [result.keys[0]],
             product: result.product,
           });
         }
@@ -252,7 +258,7 @@ app.post('/api/thank-you-product', async (req, res) => {
     }
     res.json({
       success: true,
-      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      keys: result.product === 'bundle' || result.product === 'phantom-dual' ? result.keys : [result.keys[0]],
       product: result.product,
     });
   } catch (err) {
@@ -343,7 +349,7 @@ app.post('/api/capture-order', async (req, res) => {
 
     res.json({
       success: true,
-      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      keys: result.product === 'bundle' || result.product === 'phantom-dual' ? result.keys : [result.keys[0]],
       product: result.product,
     });
   } catch (err) {
@@ -440,7 +446,7 @@ app.post('/api/claim-key', async (req, res) => {
       const keys = [];
       let prod = 'unknown';
       if (existingMain.rows.length > 0) {
-        keys.push(existingMain.rows[0].key_raw);
+        for (const row of existingMain.rows) { keys.push(row.key_raw); }
         prod = existingMain.rows[0].product;
       }
       if (existingVinted.rows.length > 0) {
@@ -472,7 +478,7 @@ app.post('/api/claim-key', async (req, res) => {
 
     res.json({
       success: true,
-      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      keys: result.product === 'bundle' || result.product === 'phantom-dual' ? result.keys : [result.keys[0]],
       product: result.product,
     });
   } catch (err) {
