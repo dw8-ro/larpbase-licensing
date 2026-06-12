@@ -271,6 +271,7 @@ const ORDER_PRODUCTS = {
   'vinted': { amount: '7.99', desc: 'Larp Vinted License' },
   'bundle': { amount: '22.99', desc: 'Larp Phantom + Vinted Bundle' },
 };
+const orderStore = new Map();
 
 app.post('/api/create-order', async (req, res) => {
   try {
@@ -291,6 +292,10 @@ app.post('/api/create-order', async (req, res) => {
       },
       { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
     );
+
+    orderStore.set(data.id, { product, amount: ORDER_PRODUCTS[product].amount });
+    // Clean up stale entries after 30 min
+    setTimeout(() => orderStore.delete(data.id), 30 * 60 * 1000);
 
     res.json({ orderId: data.id });
   } catch (err) {
@@ -322,9 +327,13 @@ app.post('/api/capture-order', async (req, res) => {
       return res.status(400).json({ error: 'No capture found' });
     }
 
-    const amount = parseFloat(capture.amount?.value || '0');
     const captureId = capture.id;
     const payerEmail = data.payer?.email_address || '';
+
+    // Use the original amount from the order store (what we set, not what was captured)
+    const original = orderStore.get(orderId);
+    const amount = original ? parseFloat(original.amount) : parseFloat(capture.amount?.value || '0');
+    orderStore.delete(orderId);
 
     const result = await processPayment(captureId, amount, payerEmail);
 
