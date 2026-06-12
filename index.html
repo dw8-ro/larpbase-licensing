@@ -300,10 +300,19 @@
         for (const p of products) {
           const container = document.getElementById(`paypal-button-container-${p.id}`)
           if (!container) continue
+
+          const handlers = makeHandlers(container, p.id)
           await paypal.Buttons({
             style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
-            ...makeHandlers(container, p.id),
+            ...handlers,
           }).render(`#paypal-button-container-${p.id}`)
+          try {
+            await paypal.Buttons({
+              style: { layout: 'vertical', color: 'blue', shape: 'rect', label: 'card' },
+              fundingSource: paypal.FUNDING.CARD,
+              ...handlers,
+            }).render(`#paypal-button-container-${p.id}`)
+          } catch (e) { console.log('Card button not available:', e.message) }
         }
       }
       document.head.appendChild(script)
