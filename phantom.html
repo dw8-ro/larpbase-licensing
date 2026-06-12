@@ -33,6 +33,7 @@
   <nav>
     <div class="nav-inner">
       <a href="index.html" class="logo">
+        <img src="Images/logo.png" alt="LarpBase" class="logo-img">
         <div class="logo-text">Larp<span>Base</span></div>
       </a>
       <div class="nav-links">
@@ -74,7 +75,7 @@
 
     <section class="phone-section">
       <div class="phone-carousel" style="justify-content:center;animation:none">
-        <a href="phantom.html"><img src="Images/phantom.png" alt="Phantom screenshot" style="max-width:400px;width:100%;border-radius:0"></a>
+        <a href="phantom.html"><img src="Images/phantom.png" alt="Phantom screenshot" class="product-img" style="max-width:400px;width:100%;border-radius:0"></a>
       </div>
     </section>
 
@@ -119,11 +120,63 @@
       </div>
     </section>
 
+    <section class="p2p-section">
+      <div class="container">
+        <div class="section-header fade-in">
+          <span class="section-label">Peer 2 Peer</span>
+          <h2 class="section-title">Peer-to-peer simulated transactions.</h2>
+          <p class="section-subtitle">Send simulated crypto to another LarperWallet user, their wallet updates instantly.</p>
+        </div>
+        <div class="steps fade-in">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <h3>Send</h3>
+              <p>Enter another LarperWallet user's address, select token and amount.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <h3>They get notified</h3>
+              <p>A push notification appears on their device.</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <h3>Wallet updates</h3>
+              <p>Balance and transaction history update instantly.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo link + video modal placeholder -->
+    <div class="container" style="text-align:center;margin-top:18px">
+      <a href="#" class="p2p-demo-link">See it in action</a>
+    </div>
+
+    <div id="p2pModal" class="video-modal" aria-hidden="true">
+      <div class="video-modal-overlay" data-close></div>
+      <div class="video-modal-content">
+        <button class="modal-close" aria-label="Close demo">×</button>
+        <div class="video-placeholder">
+          <video id="p2pDemoVideo" class="video-modal__video" controls playsinline preload="metadata" poster="assets/media/p2p-poster.jpg">
+            <source src="assets/media/p2p-demo.mp4" type="video/mp4">
+            <source src="assets/media/p2p-demo.mov" type="video/quicktime">
+            Your browser does not support the video tag.
+          </video>
+        </div>
+      </div>
+    </div>
+
     <section class="how-it-works">
       <div class="container">
         <div class="section-header fade-in">
           <span class="section-label">How It Works</span>
-          <h2 class="section-title">Up and running in minutes.</h2>
+          <h2 class="section-title gradient-text">Up and running in minutes.</h2>
         </div>
         <div class="steps fade-in">
           <div class="step">
@@ -144,7 +197,7 @@
             <div class="step-num">3</div>
             <div class="step-content">
               <h3>Activate</h3>
-              <p>Enter your license key on our activation page and start customizing your portfolio.</p>
+              <p>Enter your license key on <a href="activation.html" style="text-decoration:underline">our activation page</a> and start customizing your portfolio.</p>
             </div>
           </div>
         </div>
