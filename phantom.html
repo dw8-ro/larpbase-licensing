@@ -304,9 +304,7 @@
               return data.orderId
             },
             onApprove: async (data) => {
-              document.querySelectorAll(`#paypal-button-container-${productId}, #paypal-card-container-${productId}`).forEach(el => {
-                if (el) el.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.6);font-size:.85rem;padding:8px">Processing...</p>'
-              })
+              container.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.6);font-size:.85rem;padding:8px">Processing...</p>'
               const res = await fetch('/api/capture-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -341,22 +339,10 @@
           const container = document.getElementById(`paypal-button-container-${p.id}`)
           if (!container) continue
 
-          const handlers = makeHandlers(container, p.id)
-
           await paypal.Buttons({
             style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
-            ...handlers,
+            ...makeHandlers(container, p.id),
           }).render(`#paypal-button-container-${p.id}`)
-
-          const cardContainer = document.createElement('div')
-          cardContainer.id = `paypal-card-container-${p.id}`
-          cardContainer.style.marginTop = '6px'
-          container.parentNode.insertBefore(cardContainer, container.nextSibling)
-          await paypal.Buttons({
-            fundingSource: paypal.FUNDING.CARD,
-            style: { layout: 'vertical', color: 'white', shape: 'rect', label: 'card' },
-            ...handlers,
-          }).render(`#paypal-card-container-${p.id}`)
         }
       }
       document.head.appendChild(script)
