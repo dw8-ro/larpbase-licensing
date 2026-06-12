@@ -267,6 +267,88 @@ app.post('/api/thank-you-product', async (req, res) => {
   }
 });
 
+app.get('/api/config', (req, res) => {
+  res.json({ clientId: PAYPAL_CLIENT_ID });
+});
+
+const ORDER_PRODUCTS = {
+  'phantom': { amount: '16.99', desc: 'Larp Phantom License' },
+  'phantom-dual': { amount: '23.99', desc: 'Larp Phantom Dual License' },
+  'vinted': { amount: '7.99', desc: 'Larp Vinted License' },
+  'bundle': { amount: '22.99', desc: 'Larp Phantom + Vinted Bundle' },
+};
+
+app.post('/api/create-order', async (req, res) => {
+  try {
+    const { product } = req.body;
+    if (!ORDER_PRODUCTS[product]) {
+      return res.status(400).json({ error: 'Invalid product' });
+    }
+
+    const accessToken = await getPayPalAccessToken();
+    const { data } = await axios.post(
+      `${PAYPAL_API}/v2/checkout/orders`,
+      {
+        intent: 'CAPTURE',
+        purchase_units: [{
+          amount: { currency_code: 'GBP', value: ORDER_PRODUCTS[product].amount },
+          description: ORDER_PRODUCTS[product].desc,
+        }],
+      },
+      { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    res.json({ orderId: data.id });
+  } catch (err) {
+    console.error('Create order error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to create order' });
+  }
+});
+
+app.post('/api/capture-order', async (req, res) => {
+  try {
+    const { orderId } = req.body;
+    if (!orderId) {
+      return res.status(400).json({ error: 'Order ID required' });
+    }
+
+    const accessToken = await getPayPalAccessToken();
+    const { data } = await axios.post(
+      `${PAYPAL_API}/v2/checkout/orders/${orderId}/capture`,
+      {},
+      { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+    );
+
+    if (data.status !== 'COMPLETED') {
+      return res.status(400).json({ error: 'Payment not completed' });
+    }
+
+    const capture = data.purchase_units?.[0]?.payments?.captures?.[0];
+    if (!capture) {
+      return res.status(400).json({ error: 'No capture found' });
+    }
+
+    const amount = parseFloat(capture.amount?.value || '0');
+    const captureId = capture.id;
+    const payerEmail = data.payer?.email_address || '';
+
+    const result = await processPayment(captureId, amount, payerEmail);
+
+    if (!result) {
+      return res.status(400).json({ error: 'Could not process payment' });
+    }
+
+    res.json({
+      success: true,
+      keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+      product: result.product,
+    });
+  } catch (err) {
+    console.error('Capture order error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to capture order' });
+  }
+});
+
 app.get('/dev/test-payment/:product', async (req, res) => {
   try {
     const product = req.params.product;

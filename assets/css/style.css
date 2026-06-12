@@ -860,6 +860,14 @@ pre, code, kbd, samp{
   .already-box{border-radius:16px;flex-direction:column;padding:16px;gap:12px}
   .steps{padding:0}
 }
+.paypal-btn-container {
+  margin-top: 12px;
+  min-height: 45px;
+}
+.paypal-btn-container iframe {
+  border-radius: 8px !important;
+}
+
 @media(max-width:480px){
   .phone-frame{width:200px;height:400px;border-radius:28px}
   .phone-screen{border-radius:20px}
