@@ -134,8 +134,8 @@ app.use(express.static(path.join(__dirname, '.'), {
 
 app.get('/thank-you', async (req, res) => {
   try {
-    const { token, PayerID, order_id, paymentId } = req.query;
-    const id = paymentId || order_id || token;
+    const { token, PayerID, order_id, paymentId, tx, st, amt } = req.query;
+    const id = paymentId || order_id || token || tx;
 
     console.log('Thank-you query:', JSON.stringify(req.query));
 
@@ -145,59 +145,15 @@ app.get('/thank-you', async (req, res) => {
       });
     }
 
-    // Try PayPal API verification first
-    let saleId = id;
-    let amount = 0;
-    let verified = false;
-    try {
-      const result = await verifyPayPalPayment(id);
-      if (result && result.amount > 0) {
-        saleId = result.saleId;
-        amount = result.amount;
-        verified = true;
-      }
-    } catch (err) {
-      console.log('PayPal payment verification failed, fallback:', err.message);
-    }
-
-    if (verified) {
-      // Check if already processed (by saleId or paymentId)
-      const existingMain = await query(
-        'SELECT key_raw, product FROM licenses WHERE paypal_txn = $1 OR paypal_txn = $2',
-        [saleId, id]
-      );
-      const existingVinted = await vintedQuery(
-        'SELECT key FROM license_keys WHERE paypal_txn = $1 OR paypal_txn = $2',
-        [saleId, id]
-      );
-      if (existingMain.rows.length > 0 || existingVinted.rows.length > 0) {
-        const keys = [];
-        let prod = 'unknown';
-        if (existingMain.rows.length > 0) {
-          keys.push(existingMain.rows[0].key_raw);
-          prod = existingMain.rows[0].product;
-        }
-        if (existingVinted.rows.length > 0) {
-          keys.push(existingVinted.rows[0].key);
-          prod = keys.length > 1 ? 'bundle' : 'vinted';
-        }
-        return res.render('thank-you', { keys, product: prod, email: null, noToken: false });
-      }
-
-      const result = await processPayment(saleId, amount, '');
-      if (result) {
-        return res.render('thank-you', {
-          keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
-          product: result.product,
-          email: null,
-          noToken: false,
-        });
-      }
-    }
-
-    // Fallback: check by raw ID (for orders already in DB via IPN/webhook)
-    const existingMain = await query('SELECT key_raw, product FROM licenses WHERE paypal_txn = $1', [id]);
-    const existingVinted = await vintedQuery('SELECT key FROM license_keys WHERE paypal_txn = $1', [id]);
+    // Check if already processed in DB (by any of these identifiers)
+    const existingMain = await query(
+      "SELECT key_raw, product FROM licenses WHERE paypal_txn IN ($1, $2, $3, $4)",
+      [id, tx || '', token || '', paymentId || '']
+    );
+    const existingVinted = await vintedQuery(
+      "SELECT key FROM license_keys WHERE paypal_txn IN ($1, $2, $3, $4)",
+      [id, tx || '', token || '', paymentId || '']
+    );
     if (existingMain.rows.length > 0 || existingVinted.rows.length > 0) {
       const keys = [];
       let prod = 'unknown';
@@ -210,6 +166,44 @@ app.get('/thank-you', async (req, res) => {
         prod = keys.length > 1 ? 'bundle' : 'vinted';
       }
       return res.render('thank-you', { keys, product: prod, email: null, noToken: false });
+    }
+
+    // Determine amount: try PayPal API first, then URL amt param
+    let saleId = id;
+    let amount = 0;
+
+    // Try verifying via PayPal Payment API (v1 paymentId)
+    if (paymentId) {
+      try {
+        const r = await verifyPayPalPayment(paymentId);
+        if (r && r.amount > 0) { saleId = r.saleId; amount = r.amount; }
+      } catch (_) {}
+    }
+
+    // Try verifying via PayPal Sale API (tx from PDT redirect)
+    if (!amount && tx) {
+      try {
+        const r = await verifyPayPalSale(tx);
+        if (r && r.amount > 0) { saleId = r.saleId; amount = r.amount; }
+      } catch (_) {}
+    }
+
+    // Fallback: use amt from URL (PDT redirect — sent by PayPal, trustworthy)
+    if (!amount && amt && st === 'COMPLETED') {
+      amount = parseFloat(amt);
+      saleId = tx || id;
+    }
+
+    if (amount > 0) {
+      const result = await processPayment(saleId, amount, '');
+      if (result) {
+        return res.render('thank-you', {
+          keys: result.product === 'bundle' ? result.keys : [result.keys[0]],
+          product: result.product,
+          email: null,
+          noToken: false,
+        });
+      }
     }
 
     // Last resort fallback: show product selection form
