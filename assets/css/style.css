@@ -784,7 +784,7 @@ pre, code, kbd, samp{
 }
 
 /* Ensure containers don't exceed viewport */
-.container, .phone-carousel, .features-grid, .pricing-grid, .steps{
+.phone-carousel, .features-grid, .pricing-grid{
   max-width:100%;
   box-sizing:border-box;
 }

@@ -167,7 +167,7 @@
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>iOS & Android</li>
               <li><svg class="cross" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg>Priority support</li>
             </ul>
-            <a href="https://www.paypal.com/ncp/payment/ZNB27F9SWKJJA" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">Buy <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="16" height="16" fill="#FFFFFF"><path d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.9 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"/></svg></a>
+            <div id="paypal-button-container-phantom" class="paypal-btn-container"></div>
           </div>
           <div class="pricing-card featured">
             <div class="tag">Most Popular</div>
@@ -180,7 +180,7 @@
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Priority support</li>
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>All updates included</li>
             </ul>
-            <a href="https://www.paypal.com/ncp/payment/HKTX827MU7RGC" class="btn btn-primary" target="_blank" rel="noopener noreferrer">Buy <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="16" height="16" fill="#FFFFFF"><path d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.9 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"/></svg></a>
+            <div id="paypal-button-container-phantom-dual" class="paypal-btn-container"></div>
           </div>
           <div class="pricing-card">
             <div class="tag">Vinted</div>
@@ -193,7 +193,7 @@
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>Priority support</li>
               <li><svg class="check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>iOS & Android</li>
             </ul>
-            <a href="https://www.paypal.com/ncp/payment/K3YMFZS2YFDW6" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">Buy <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="16" height="16" fill="#FFFFFF"><path d="M566.6 342.6C579.1 330.1 579.1 309.8 566.6 297.3L406.6 137.3C394.1 124.8 373.8 124.8 361.3 137.3C348.8 149.8 348.8 170.1 361.3 182.6L466.7 288L96 288C78.3 288 64 302.3 64 320C64 337.7 78.3 352 96 352L466.7 352L361.3 457.4C348.8 469.8 348.8 490.2 361.3 502.7C373.8 515.2 394.1 515.2 406.6 502.7L566.6 342.7z"/></svg></a>
+            <div id="paypal-button-container-vinted" class="paypal-btn-container"></div>
           </div>
         </div>
       </div>
@@ -241,5 +241,74 @@
   </button>
 
   <script src="assets/js/main.js"></script>
+  <script>
+    async function initPayPal() {
+      const config = await fetch('/api/config').then(r => r.json())
+      const script = document.createElement('script')
+      script.src = `https://www.paypal.com/sdk/js?client-id=${config.clientId}&currency=GBP`
+      script.onload = async () => {
+        const products = [
+          { id: 'phantom', name: 'Phantom Single' },
+          { id: 'phantom-dual', name: 'Phantom Dual' },
+          { id: 'vinted', name: 'Vinted' },
+        ]
+
+        function makeHandlers(container, productId) {
+          return {
+            createOrder: async () => {
+              const res = await fetch('/api/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ product: productId }),
+              })
+              const data = await res.json()
+              if (!res.ok) throw new Error(data.error)
+              return data.orderId
+            },
+            onApprove: async (data) => {
+              container.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.6);font-size:.85rem;padding:8px">Processing...</p>'
+              const res = await fetch('/api/capture-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: data.orderID }),
+              })
+              const result = await res.json()
+              if (result.success) {
+                const keysHtml = (Array.isArray(result.keys) ? result.keys : [result.keys])
+                  .map(k => `<code style="display:block;font-size:1.1rem;letter-spacing:2px;padding:8px;background:rgba(255,255,255,0.08);border-radius:6px;margin:4px 0;text-align:center;word-break:break-all">${k}</code>`)
+                  .join('')
+                container.innerHTML = `
+                  <div style="background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.3);border-radius:10px;padding:12px;text-align:center">
+                    <p style="color:#22c55e;font-weight:600;margin-bottom:8px">✓ Payment Successful!</p>
+                    ${keysHtml}
+                    <a href="/activation.html" style="display:inline-block;margin-top:8px;padding:8px 16px;border-radius:6px;background:#8B5CF6;color:#fff;text-decoration:none;font-size:.85rem;font-weight:500">Activate Now →</a>
+                  </div>`
+              } else {
+                container.innerHTML = `<p style="color:#ef4444;text-align:center;font-size:.85rem">${result.error || 'Payment failed'}. <a href="https://t.me/larpbase7/203" style="color:#8B5CF6">Contact support</a></p>`
+              }
+            },
+            onCancel: () => {
+              container.innerHTML = `<p style="color:rgba(255,255,255,0.4);text-align:center;font-size:.85rem">Payment cancelled. <a href="#" onclick="location.reload();return false" style="color:#8B5CF6">Try again</a></p>`
+            },
+            onError: (err) => {
+              console.error('PayPal error:', err)
+              container.innerHTML = `<p style="color:#ef4444;text-align:center;font-size:.85rem">Something went wrong. <a href="#" onclick="location.reload();return false" style="color:#8B5CF6">Try again</a></p>`
+            },
+          }
+        }
+
+        for (const p of products) {
+          const container = document.getElementById(`paypal-button-container-${p.id}`)
+          if (!container) continue
+          await paypal.Buttons({
+            style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
+            ...makeHandlers(container, p.id),
+          }).render(`#paypal-button-container-${p.id}`)
+        }
+      }
+      document.head.appendChild(script)
+    }
+    initPayPal()
+  </script>
 </body>
 </html>
