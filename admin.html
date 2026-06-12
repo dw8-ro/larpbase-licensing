@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:#0a0a12;color:#ccc;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:32px;max-width:420px;width:100%}
+    h1{font-size:1.2rem;color:#fff;margin-bottom:4px;font-weight:600}
+    .sub{color:rgba(255,255,255,0.35);font-size:.8rem;margin-bottom:24px}
+    label{font-size:.75rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px}
+    input,select{width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#ccc;font-size:.85rem;outline:none;margin-bottom:16px}
+    input:focus,select:focus{border-color:rgba(139,92,246,0.4)}
+    button{width:100%;padding:10px;border-radius:8px;border:none;background:#8B5CF6;color:#fff;font-size:.85rem;font-weight:600;cursor:pointer;transition:opacity .2s}
+    button:hover{opacity:.85}
+    .hidden{display:none}
+    .key-box{margin-top:16px;padding:16px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.2);border-radius:10px}
+    .key-box code{display:block;font-size:1.1rem;letter-spacing:2px;padding:8px;background:rgba(0,0,0,0.3);border-radius:6px;margin:4px 0;text-align:center;font-family:monospace;color:#22c55e;word-break:break-all}
+    .error{color:#ef4444;font-size:.8rem;margin-top:8px;text-align:center}
+    .copy-btn{display:inline-block;margin-top:8px;padding:6px 12px;border-radius:6px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#aaa;font-size:.75rem;cursor:pointer}
+    .copy-btn:hover{background:rgba(255,255,255,0.1)}
+  </style>
+</head>
+<body>
+  <div class="card" id="app">
+    <h1>Dashboard</h1>
+    <p class="sub">License key generator</p>
+
+    <div id="login">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()">
+      <button onclick="login()">Login</button>
+      <div id="loginError" class="error" style="display:none">Incorrect password</div>
+    </div>
+
+    <div id="generator" class="hidden">
+      <label>Product</label>
+      <select id="product">
+        <option value="phantom">Phantom Single — £16.99</option>
+        <option value="phantom-dual">Phantom Dual — £23.99</option>
+        <option value="vinted">Vinted — £7.99</option>
+        <option value="bundle">Bundle (Phantom+Vinted) — £22.99</option>
+      </select>
+      <button onclick="generate()">Generate Key</button>
+      <div id="result"></div>
+    </div>
+  </div>
+
+  <script>
+    async function login() {
+      const pw = document.getElementById('password').value
+      document.getElementById('loginError').style.display = 'none'
+      const res = await fetch('/api/admin/generate-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw, product: 'phantom' }),
+      })
+      const data = await res.json()
+      if (res.status === 401) {
+        document.getElementById('loginError').style.display = 'block'
+        return
+      }
+      document.getElementById('login').classList.add('hidden')
+      document.getElementById('generator').classList.remove('hidden')
+    }
+
+    async function generate() {
+      const pw = document.getElementById('password').value
+      const product = document.getElementById('product').value
+      const result = document.getElementById('result')
+      result.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.3);font-size:.8rem;margin-top:12px">Generating...</p>'
+      const res = await fetch('/api/admin/generate-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw, product }),
+      })
+      const data = await res.json()
+      if (!data.success) {
+        result.innerHTML = '<p class="error">' + (data.error || 'Error') + '</p>'
+        return
+      }
+      const keys = Array.isArray(data.keys) ? data.keys : [data.keys]
+      let labels = []
+      if (product === 'bundle') labels = ['Phantom Key', 'Vinted Key']
+      else if (product === 'phantom-dual') labels = ['Phantom Key #1', 'Phantom Key #2']
+      else labels = ['License Key']
+      result.innerHTML = '<div class="key-box">' + keys.map((k, i) => `
+        <div style="font-size:.7rem;color:rgba(255,255,255,0.3);margin-top:${i>0?'12px':'0'}">${labels[i]||'Key'}</div>
+        <code>${k}</code>
+      `).join('') + '<br><button class="copy-btn" onclick="copyAll(\'' + keys.join('|') + '\')">Copy All</button></div>'
+    }
+
+    function copyAll(text) {
+      const lines = text.split('|').join('\n')
+      navigator.clipboard.writeText(lines).then(() => {
+        const btn = document.querySelector('.copy-btn')
+        btn.textContent = 'Copied!'
+        setTimeout(() => btn.textContent = 'Copy All', 2000)
+      })
+    }
+  </script>
+</body>
+</html>

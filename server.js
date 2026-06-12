@@ -14,6 +14,7 @@ app.set('views', path.join(__dirname, 'views'));
 const PAYPAL_API = 'https://api-m.paypal.com';
 const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID;
 const PAYPAL_CLIENT_SECRET = process.env.PAYPAL_CLIENT_SECRET;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '9AkB#41d\\2$3.pVc~_9;"P0^q\\6tR<O)FMGY9VUkC4E)$(c[*C';
 
 const PRODUCT_MAP = {
   '16.99': 'phantom',
@@ -571,6 +572,49 @@ app.post('/api/paypal-ipn', async (req, res) => {
   } catch (err) {
     console.error('IPN error:', err);
     res.sendStatus(200);
+  }
+});
+
+app.post('/api/admin/generate-key', async (req, res) => {
+  try {
+    const { password, product } = req.body;
+    if (password !== ADMIN_PASSWORD) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    if (!['phantom', 'phantom-dual', 'vinted', 'bundle'].includes(product)) {
+      return res.status(400).json({ error: 'Invalid product' });
+    }
+
+    let keys = [];
+    const txnId = 'ADMIN-' + Date.now();
+
+    if (product === 'vinted') {
+      const k = generateKey(); const h = hashKey(k);
+      await vintedQuery('INSERT INTO license_keys (key_hash,key,status,single_device,paypal_txn) VALUES($1,$2,$3,$4,$5)', [h,k,'active',true,txnId]);
+      keys.push(k);
+    } else if (product === 'phantom-dual') {
+      for (let i = 0; i < 2; i++) {
+        const k = generateKey(); const h = hashKey(k);
+        await query('INSERT INTO licenses (key_raw,key,plan,product,paypal_txn,customer_email,status) VALUES($1,$2,$3,$4,$5,$6,$7)', [k,h,'Active Plan','phantom-dual',txnId,'','active']);
+        keys.push(k);
+      }
+    } else if (product === 'bundle') {
+      const pk = generateKey(); const ph = hashKey(pk);
+      await query('INSERT INTO licenses (key_raw,key,plan,product,paypal_txn,customer_email,status) VALUES($1,$2,$3,$4,$5,$6,$7)', [pk,ph,'Active Plan','phantom',txnId,'','active']);
+      keys.push(pk);
+      const vk = generateKey(); const vh = hashKey(vk);
+      await vintedQuery('INSERT INTO license_keys (key_hash,key,status,single_device,paypal_txn) VALUES($1,$2,$3,$4,$5)', [vh,vk,'active',true,txnId]);
+      keys.push(vk);
+    } else {
+      const k = generateKey(); const h = hashKey(k);
+      await query('INSERT INTO licenses (key_raw,key,plan,product,paypal_txn,customer_email,status) VALUES($1,$2,$3,$4,$5,$6,$7)', [k,h,'Active Plan',product,txnId,'','active']);
+      keys.push(k);
+    }
+
+    res.json({ success: true, keys, product });
+  } catch (err) {
+    console.error('Admin key gen error:', err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 
