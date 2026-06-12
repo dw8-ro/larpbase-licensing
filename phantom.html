@@ -284,7 +284,7 @@
       const config = await fetch('/api/config').then(r => r.json())
       const script = document.createElement('script')
       script.src = `https://www.paypal.com/sdk/js?client-id=${config.clientId}&currency=GBP`
-      script.onload = () => {
+      script.onload = async () => {
         const products = [
           { id: 'phantom', name: 'Phantom Single' },
           { id: 'phantom-dual', name: 'Phantom Dual' },
@@ -337,29 +337,27 @@
           }
         }
 
-        products.forEach(p => {
+        for (const p of products) {
           const container = document.getElementById(`paypal-button-container-${p.id}`)
-          if (!container) return
+          if (!container) continue
 
           const handlers = makeHandlers(container, p.id)
 
-          // PayPal button (gold)
-          paypal.Buttons({
+          await paypal.Buttons({
             style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
             ...handlers,
           }).render(`#paypal-button-container-${p.id}`)
 
-          // Debit/Credit Card button (gray) below it
           const cardContainer = document.createElement('div')
           cardContainer.id = `paypal-card-container-${p.id}`
           cardContainer.style.marginTop = '6px'
           container.parentNode.insertBefore(cardContainer, container.nextSibling)
-          paypal.Buttons({
+          await paypal.Buttons({
             fundingSource: paypal.FUNDING.CARD,
             style: { layout: 'vertical', color: 'white', shape: 'rect', label: 'card' },
             ...handlers,
           }).render(`#paypal-card-container-${p.id}`)
-        })
+        }
       }
       document.head.appendChild(script)
     }
