@@ -46,12 +46,17 @@
     <% } else { %>
       <div class="icon">✅</div>
       <h1>Payment Confirmed!</h1>
-      <p class="sub"><%= product === 'bundle' ? 'Your license keys are ready.' : 'Your license key is ready.' %></p>
+      <p class="sub"><%= product === 'bundle' || product === 'phantom-dual' ? 'Your license keys are ready.' : 'Your license key is ready.' %></p>
       <div class="key-box">
         <% if (product === 'bundle') { %>
           <div class="key-label">Larp Phantom Key</div>
           <div class="key"><%= keys[0] %></div>
           <div class="key-label" style="margin-top:20px">Larp Vinted Key</div>
+          <div class="key"><%= keys[1] %></div>
+        <% } else if (product === 'phantom-dual') { %>
+          <div class="key-label">Larp Phantom Key (1/2)</div>
+          <div class="key"><%= keys[0] %></div>
+          <div class="key-label" style="margin-top:20px">Larp Phantom Key (2/2)</div>
           <div class="key"><%= keys[1] %></div>
         <% } else { %>
           <div class="key-label">Your License Key</div>

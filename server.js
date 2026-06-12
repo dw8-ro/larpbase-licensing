@@ -384,7 +384,17 @@ app.get('/dev/test-payment/:product', async (req, res) => {
             'INSERT INTO license_keys (key_hash, key, status, single_device, paypal_txn) VALUES ($1, $2, $3, $4, $5)',
             [hashedKey, rawKey, 'active', true, 'DEV-TEST-' + Date.now()]
           );
-        } else {
+    } else if (product === 'phantom-dual') {
+      for (let i = 0; i < 2; i++) {
+        const rawKey = generateKey();
+        const hashedKey = hashKey(rawKey);
+        await query(
+          'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+          [rawKey, hashedKey, 'Active Plan', 'phantom-dual', 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
+        );
+        keys.push(rawKey);
+      }
+    } else {
           await query(
             'INSERT INTO licenses (key_raw, key, plan, product, paypal_txn, customer_email, status) VALUES ($1, $2, $3, $4, $5, $6, $7)',
             [rawKey, hashedKey, 'Active Plan', 'phantom', 'DEV-TEST-' + Date.now(), 'dev-test@example.com', 'active']
@@ -410,6 +420,9 @@ app.get('/dev/test-payment/:product', async (req, res) => {
     if (product === 'bundle') {
       html += `<p><strong>Phantom Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[0]}</code></p>`;
       html += `<p><strong>Vinted Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[1]}</code></p>`;
+    } else if (product === 'phantom-dual') {
+      html += `<p><strong>Phantom Key #1:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[0]}</code></p>`;
+      html += `<p><strong>Phantom Key #2:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[1]}</code></p>`;
     } else {
       html += `<p><strong>Key:</strong> <code style="font-size:1.3rem;letter-spacing:2px">${keys[0]}</code></p>`;
     }
