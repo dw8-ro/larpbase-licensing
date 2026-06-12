@@ -859,8 +859,9 @@ pre, code, kbd, samp{
   .footer-inner{flex-direction:column;text-align:center}
   .already-box{border-radius:16px;flex-direction:column;padding:16px;gap:12px}
   .steps{padding:0}
-  .phone-carousel{gap:8px;flex-wrap:nowrap}
-  .phone-carousel img{max-width:calc(50% - 4px)!important;width:calc(50% - 4px)!important}
+  .phone-carousel{flex-wrap:nowrap!important;gap:8px!important}
+  .phone-carousel a{flex:1;min-width:0}
+  .phone-carousel img{max-width:100%!important;width:100%!important}
 }
 .paypal-btn-container {
   margin-top: 12px;
