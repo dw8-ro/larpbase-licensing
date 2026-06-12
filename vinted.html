@@ -224,23 +224,23 @@
           { id: 'vinted', name: 'Vinted' },
           { id: 'bundle', name: 'Phantom + Vinted Bundle' },
         ]
-        products.forEach(p => {
-          const container = document.getElementById(`paypal-button-container-${p.id}`)
-          if (!container) return
-          paypal.Buttons({
-            style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
+
+        function makeHandlers(container, productId) {
+          return {
             createOrder: async () => {
               const res = await fetch('/api/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ product: p.id }),
+                body: JSON.stringify({ product: productId }),
               })
               const data = await res.json()
               if (!res.ok) throw new Error(data.error)
               return data.orderId
             },
             onApprove: async (data) => {
-              container.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.6);font-size:.85rem">Processing...</p>'
+              document.querySelectorAll(`#paypal-button-container-${productId}, #paypal-card-container-${productId}`).forEach(el => {
+                if (el) el.innerHTML = '<p style="text-align:center;color:rgba(255,255,255,0.6);font-size:.85rem;padding:8px">Processing...</p>'
+              })
               const res = await fetch('/api/capture-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -268,7 +268,31 @@
               console.error('PayPal error:', err)
               container.innerHTML = `<p style="color:#ef4444;text-align:center;font-size:.85rem">Something went wrong. <a href="#" onclick="location.reload();return false" style="color:#8B5CF6">Try again</a></p>`
             },
+          }
+        }
+
+        products.forEach(p => {
+          const container = document.getElementById(`paypal-button-container-${p.id}`)
+          if (!container) return
+
+          const handlers = makeHandlers(container, p.id)
+
+          // PayPal button (gold)
+          paypal.Buttons({
+            style: { layout: 'vertical', color: 'gold', shape: 'rect', label: 'paypal' },
+            ...handlers,
           }).render(`#paypal-button-container-${p.id}`)
+
+          // Debit/Credit Card button (gray) below it
+          const cardContainer = document.createElement('div')
+          cardContainer.id = `paypal-card-container-${p.id}`
+          cardContainer.style.marginTop = '6px'
+          container.parentNode.insertBefore(cardContainer, container.nextSibling)
+          paypal.Buttons({
+            fundingSource: paypal.FUNDING.CARD,
+            style: { layout: 'vertical', color: 'white', shape: 'rect', label: 'card' },
+            ...handlers,
+          }).render(`#paypal-card-container-${p.id}`)
         })
       }
       document.head.appendChild(script)
